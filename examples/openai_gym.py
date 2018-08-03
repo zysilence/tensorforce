@@ -144,6 +144,9 @@ def main():
                 r.agent.episode, r.episode_timestep, steps_per_second
             ))
             logger.info("Episode reward: {}".format(r.episode_rewards[-1]))
+            # [sfan] print average rewards from start episode to current one
+            logger.info("Average rewards: {:0.2f}".
+                        format(sum(r.episode_rewards) / len(r.episode_rewards)))
             logger.info("Average of last 500 rewards: {:0.2f}".
                         format(sum(r.episode_rewards[-500:]) / min(500, len(r.episode_rewards))))
             logger.info("Average of last 100 rewards: {:0.2f}".
