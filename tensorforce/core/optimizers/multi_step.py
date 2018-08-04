@@ -77,6 +77,8 @@ class MultiStep(MetaOptimizer):
 
         else:
             # TensorFlow while loop
+            # [sfan] Updating parameters for 'self.num_steps' times per training example;
+            # [sfan] as if training 'self.num_steps' epochs in supervised learning
             def body(iteration, deltas):
                 with tf.control_dependencies(control_inputs=deltas):
                     step_deltas = self.optimizer.step(time=time, variables=variables, arguments=arguments, **kwargs)
