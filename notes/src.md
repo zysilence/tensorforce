@@ -19,4 +19,3 @@
     * baseline为V(s)
     * 使用MLP作为V(s)的估计
     * 每个episode结束，策略更新一次的同时， MLP的参数更新num_steps次
-* 每个episode结束
