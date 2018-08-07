@@ -146,8 +146,11 @@ class Queue(Memory):
 
     def tf_store(self, states, internals, actions, terminal, reward):
         # Memory indices to overwrite.
-        num_instances = tf.shape(input=terminal)[0]
+        num_instances = tf.shape(input=terminal)[0]  # [sfan] episode length
         with tf.control_dependencies([tf.assert_less_equal(num_instances, self.capacity)]):
+            # [sfan] location to store the new experience
+            # [sfan] if the memory is out of usage, reuse from the head; this is different from self.episode_indices,
+            # [sfan] whose capacity is not limited.
             indices = tf.range(self.memory_index, self.memory_index + num_instances) % self.capacity
 
         # Remove episode indices.
@@ -155,8 +158,9 @@ class Queue(Memory):
             input_tensor=tf.gather(params=self.terminal_memory, indices=indices),
             axis=0,
             dtype=util.tf_dtype('int')
-        )
+        )  # [sfan] episode number of old experiences in the location of the new experiences to be stored
         num_episodes = tf.minimum(x=num_episodes, y=self.episode_count)
+        # [sfan] self.episode_indices is a FIFO queue
         assignment = tf.assign(
             ref=self.episode_indices[:self.episode_count - num_episodes],
             value=self.episode_indices[num_episodes: self.episode_count]
@@ -192,6 +196,7 @@ class Queue(Memory):
 
         # Add episode indices.
         with tf.control_dependencies(control_inputs=assignments):
+            # [sfan] episodes number of new experiences
             num_episodes = tf.count_nonzero(input_tensor=terminal, axis=0, dtype=util.tf_dtype('int'))
             assignment = tf.assign(
                 ref=self.episode_indices[self.episode_count: self.episode_count + num_episodes],
