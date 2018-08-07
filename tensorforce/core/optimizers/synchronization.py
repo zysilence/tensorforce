@@ -64,8 +64,9 @@ class Synchronization(Optimizer):
 
         last_sync = tf.get_variable(
             name='last-sync',
-            dtype=tf.int32,
-            initializer=(-self.sync_frequency),
+            shape=(),
+            dtype=tf.int64,
+            initializer=tf.constant_initializer(value=(-self.sync_frequency), dtype=tf.int64),
             trainable=False
         )
 
