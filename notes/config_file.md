@@ -1,7 +1,12 @@
-## type
+## 注意
+examples/configs下面给出的默认配置，并没有进行优化，需要根据具体问题进行超参数的调整
+参考[Tensorforce FAQ: 2. Why is my algorithm not learning?](https://github.com/reinforceio/tensorforce/blob/master/FAQ.md)
+
+## 配置说明
+### type
 agent类型，若type取值为'xxx'，则对应agents/xxx.py
 
-## update_mode
+### update_mode
 * 'unit'
     * 'episodes': 回合更新，如policy gradient算法
     * 'timesteps'
@@ -13,7 +18,7 @@ agent类型，若type取值为'xxx'，则对应agents/xxx.py
     * 若agent经历的episode数目为episodes_num，则满足episodes_num % frequency == 0的条件时更新参数
     * 参考tf_observe_timestep() in models/memory_model.py
 
-## memory
+### memory
 * capacity: memory容量
 * type
     * 'latest'
@@ -23,8 +28,8 @@ agent类型，若type取值为'xxx'，则对应agents/xxx.py
     * 'replay'
 * include_next_states
 
-## gae_lambda
+### gae_lambda
 表示使用Td error来估计Advantage Function, 参考tf_reward_estimation() in models/pg_model.py
 
-## entropy_regularization
+### entropy_regularization
 正则项系数
