@@ -11,11 +11,13 @@
     * 在Policy Gradient with Baseline方法中，估计baseline(即V(s))时，使用了multi_step
 
 ### Vanilla Policy Gradient
-* 使用vpg.agent
-* 没有baseline时
+* agent: vpg.agent
+* Loss function
+    * 采用average reward per time_step, 即 Sum(log(pi)*advantage_value(s))/len(batch)
+* 不使用baseline时
     * 使用discouted cumulative reward作为Q(s,a)的采样
-    * 一个batch为一个episode，没有episode结束后更新一次参数
-* 使用baseline
+    * 一个batch为一个episode，每个或者几个(取决于配置)episode结束后更新一次参数
+* 使用baseline时
     * baseline为V(s)
     * 使用MLP作为V(s)的估计
     * 每个episode结束，策略更新一次的同时， MLP的参数更新num_steps次
