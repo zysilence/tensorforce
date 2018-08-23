@@ -11,18 +11,24 @@ class XauusdEnv(gym.Env):
         'video.frames_per_second': 50
     }
 
-    def __init__(self, start=None, end=None, period=1800):
+    def __init__(self, start=None, end=None, period=1800, window_size=31):
         self.start = start
         self.end = end
         self.period = period
+        self.window_size = window_size
 
         self.action_space = spaces.Discrete(3)
-        self.observation_space = spaces.Box(0, 10.0)
+        # 'asset': (cash, asset)
+        self.observation_space = spaces.Dict({
+            'history': spaces.Box(low=0, high=10, shape=(self.window_size, 4), dtype=np.float32),
+            'asset': spaces.Box(low=0, high=100, shape=(2,), dtype=np.float32)
+        })
 
         self.seed()
         self.viewer = None
-        self.state = None  # type: tuple
-
+        # self.state: (open, close, high, low, cash, asset);
+        #             type: tuple
+        self.state = None
         self.steps_beyond_done = None
 
     def seed(self, seed=None):
@@ -30,8 +36,21 @@ class XauusdEnv(gym.Env):
         return [seed]
 
     def step(self, action):
+        """
+        :param action: 0 hold; 1 buy 2%; 0 sell 2%
+        :return: state, reward, done, info
+        """
         assert self.action_space.contains(action), "%r (%s) invalid" % (action, type(action))
         state = self.state
+
+        if 0 == action:
+            self.state =
+
+        elif 1 == action:
+        else:
+
+
+
         self.state = ()
 
         if not done:
