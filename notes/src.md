@@ -10,6 +10,29 @@
       训练的效率，可以每个episode更新多次。
     * 在Policy Gradient with Baseline方法中，估计baseline(即V(s))时，使用了multi_step
 
+### Memory
+* Memory中数据什么时候更新？ 什么时候feed？
+    * 状态数据存储到Model.states_buffer
+    Agent.act()--> Model.act()--> tensorflow session.run():
+    ```python
+        fetches = [self.actions_output, self.internals_output, self.timestep_output]
+        feed_dict = self.get_feed_dict(
+            states=states,
+            internals=internals,
+            deterministic=deterministic,
+            independent=independent
+        )
+    ```
+    Model.timestep_output=Model.normal_act() if not independent-->Stores current states, internals and actions in buffer
+    * 状态数据由Model.states_buffer--> Queue(Memory).states_memory(or internals_memory or actions_memory)
+    Agent.observe()--> Model.observe()--> tensorflow session.run():
+    ```python
+    fetches = self.episode_output
+    feed_dict = self.get_feed_dict(terminal=terminal, reward=reward)
+    ```
+    Model.episode_output--> Model.create_observe_operations()--> Model.fn_observe_timestep(states=Model.states_buffer)
+    --> MemoryModel.tf_observe_timestep()--> stored--> Queue.tf_store()
+
 ### Vanilla Policy Gradient
 * agent: vpg.agent
 * Loss function

@@ -1087,6 +1087,7 @@ class Model(object):
                 return self.global_timestep + 0
 
         # Only increment timestep and update buffer if act not independent
+        # [sfan] independent: False(default value, see self.act())
         self.timestep_output = tf.cond(
             pred=independent,
             true_fn=independent_act,
@@ -1372,6 +1373,9 @@ class Model(object):
         if batched:
             assert state.shape[0] <= self.batching_capacity
 
+        # [sfan] self.timestep_output = normal_act() if independent is False;
+        # [sfan] normal_act() stores the states into self.states_buffer;
+        # [sfan] states are stored into Memory in self.observe()
         fetches = [self.actions_output, self.internals_output, self.timestep_output]
         if self.network is not None and fetch_tensors is not None:
             for name in fetch_tensors:
