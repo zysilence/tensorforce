@@ -1,0 +1,15 @@
+{
+  "DB_RUNS": "postgres://btc:btc@localhost/hyper_runs",
+  "DB_HISTORY": "postgres://btc:btc@localhost/btc_history",
+  "DB_HISTORY_LIVE": "postgres://btc:btc@localhost/history_live",
+  "GDAX": {
+    "passphrase": "",
+    "key": "",
+    "b64secret": ""
+  },
+  "DATA": {
+    "period": 60,
+    "start_year": "2015",
+    "features": ["open", "close", "high", "low"]
+  }
+}
