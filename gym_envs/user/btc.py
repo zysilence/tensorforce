@@ -21,7 +21,12 @@ import numpy as np
 
 
 HYPERS = {
-
+    'custom': {
+        'arbitrage': False,
+        'net': {
+            'step_window': 300
+        }
+    }
 }
 
 class Mode(Enum):
@@ -106,9 +111,11 @@ class BitcoinEnv(gym.Env):
         )
         acc.step.signals = []
         if self.mode == Mode.TEST:
+            # [sfan] TODO: read testset start index and end index from config
             acc.ep.i = self.acc.train.ep.i + 1
         elif self.mode == Mode.TRAIN:
-            acc.ep.i += 1
+            # [sfan] randomly chose episode start point
+            acc.ep.i = self.np_random.randint(low=0, high=self.data.df.shape[0])
 
         # self.data.reset_cash_val()
         # self.data.set_cash_val(acc.ep.i, acc.step.i, 0., 0.)
@@ -139,15 +146,6 @@ class BitcoinEnv(gym.Env):
         if act_pct == 0 and acc.step.value > 0:
             acc.step.cash += acc.step.value - acc.step.value * fee
             acc.step.value = 0
-
-        elif act_pct < 0:
-            if acc.step.value < self.min_trade:
-                act_btc = -(self.start_cash + self.start_value)
-            elif abs(act_btc) < self.min_trade:
-                act_btc = 0
-            else:
-                acc.step.cash += abs(act_btc) - abs(act_btc)*fee
-            acc.step.value -= abs(act_btc)
 
         acc.step.signals.append(float(act_btc))  # clipped signal
         # acc.step.signals.append(np.sign(act_pct))  # indicates an attempted trade
