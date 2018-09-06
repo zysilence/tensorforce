@@ -10,24 +10,20 @@ I actually do want to try NervanaSystems/Coach, that one's new since I started d
 env back to Gym format. Anyone wanna give it a go?
 """
 
+from box import Box
 import copy
 from enum import Enum
-from box import Box
-from tensorforce.execution import Runner
-from gym.envs.user.data import Data, Exchange, EXCHANGE
+import json
+import os
+
 import gym
+from gym import spaces
+from gym.envs.user.data.data import Data, Exchange, EXCHANGE
 from gym.utils import seeding
 import numpy as np
+from tensorforce.execution import Runner
 
 
-HYPERS = {
-    'custom': {
-        'arbitrage': False,
-        'net': {
-            'step_window': 300
-        }
-    }
-}
 
 class Mode(Enum):
     TRAIN = 'train'
@@ -41,11 +37,11 @@ class Mode(Enum):
 class BitcoinEnv(gym.Env):
     metadata = {
         'render.modes': ['human', 'rgb_array'],
-        'video.frames_per_second' : 50
+        'video.frames_per_second': 50
     }
 
     def __init__(self):
-        self.hypers = h = Box(HYPERS)
+        self.hypers = Box(json.load(open(os.path.dirname(__file__) + '/config/btc.json')))
 
         # cash/val start @ about $3.5k each. You should increase/decrease depending on how much you'll put into your
         # exchange accounts to trade with. Presumably the agent will learn to work with what you've got (cash/value
@@ -63,7 +59,7 @@ class BitcoinEnv(gym.Env):
             step=dict(),  # setup in reset()
         )
         self.acc = Box(train=copy.deepcopy(acc), test=copy.deepcopy(acc))
-        self.data = Data(arbitrage=h.custom.arbitrage, indicators={})
+        self.data = Data(window=self.hypers.STATE.step_window, indicators={})
 
         # gdax min order size = .01btc; kraken = .002btc
         self.min_trade = {Exchange.GDAX: .01, Exchange.KRAKEN: .002}[EXCHANGE]
@@ -83,10 +79,16 @@ class BitcoinEnv(gym.Env):
         # height = nothing (1)
         # channels = features/inputs (price actions, OHCLV, etc).
         self.cols_ = self.data.df.shape[1]
-        shape = (h.custom.net.step_window, 1, self.cols_)
+        shape = (self.hypers.STATE.step_window, 1, self.cols_)
         self.states_ = dict(type='float', shape=shape)
 
-    def __str__(self): return 'BitcoinEnv'
+        self.action_space = spaces.Discrete(2)
+        self.observation_space = spaces.Box(low=-2, high=2, shape=(self.hypers.STATE.step_window, 1, self.cols_))
+
+        # [sfan] TODO: can be configurable
+        self.mode = Mode.TRAIN
+
+        self.seed()
 
     @property
     def states(self): return self.states_
@@ -121,10 +123,9 @@ class BitcoinEnv(gym.Env):
         # self.data.set_cash_val(acc.ep.i, acc.step.i, 0., 0.)
         return self.get_next_state()
 
-    def execute(self, action):
+    def step(self, action):
         acc = self.acc[self.mode.value]
         totals = acc.step.totals
-        h = self.hypers
 
         act_pct = {
             0: 0,
@@ -188,7 +189,7 @@ class BitcoinEnv(gym.Env):
             raise NotImplementedError
 
         # if acc.step.value <= 0 or acc.step.cash <= 0: terminal = 1
-        return next_state, terminal, reward
+        return next_state, reward, terminal, {}
 
     def render(self, mode='human'):
         return None

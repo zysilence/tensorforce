@@ -36,14 +36,6 @@
         "num_steps": 5
     },
 
-    "states_preprocessing": [
-        {
-            "type": "image_resize",
-            "width": 64,
-            "height": 64
-        }
-    ],
-
     "saver": {
         "directory": null,
         "seconds": 600

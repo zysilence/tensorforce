@@ -11,5 +11,8 @@
     "period": 60,
     "start_year": "2015",
     "features": ["open", "close", "high", "low"]
+  },
+  "STATE": {
+    "step_window": 300
   }
 }

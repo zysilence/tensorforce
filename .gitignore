@@ -12,3 +12,4 @@ tf_worker_*.txt
 .DS_Store
 *.eggs
 *.vscode
+/gym_envs/user/data/populate/bitcoin-historical-data/*

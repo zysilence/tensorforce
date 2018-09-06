@@ -1,1 +1,1 @@
-from gym.envs.user.xauusd import XauusdEnv
+from gym.envs.user.btc import BitcoinEnv

@@ -8,7 +8,7 @@ import os
 
 # From connecting source file, `import engine` and run `engine.connect()`. Need each connection to be separate
 # (see https://stackoverflow.com/questions/3724900/python-ssl-problem-with-multiprocessing)
-config_json = json.load(open(os.path.dirname(__file__) + '/config.json'))
+config_json = json.load(open(os.path.dirname(__file__) + '/../config/btc.json'))
 DB = config_json['DB_HISTORY'].split('/')[-1]
 engine_runs = create_engine(config_json['DB_RUNS'])
 
@@ -27,9 +27,8 @@ EXCHANGE = Exchange.KRAKEN
 
 
 class Data(object):
-    def __init__(self, window=300, arbitrage=False, indicators={}):
+    def __init__(self, window=300, indicators={}):
         self.window = window
-        self.arbitrage = arbitrage
         self.indicators = indicators
 
         # self.ep_stride = ep_len  # disjoint

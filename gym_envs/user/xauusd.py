@@ -42,15 +42,15 @@ class XauusdEnv(gym.Env):
         """
         assert self.action_space.contains(action), "%r (%s) invalid" % (action, type(action))
         state = self.state
+        done = False
 
         if 0 == action:
-            self.state =
+            self.state = ()
 
         elif 1 == action:
+            pass
         else:
-
-
-
+            pass
         self.state = ()
 
         if not done:
