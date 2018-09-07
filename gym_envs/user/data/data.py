@@ -127,11 +127,16 @@ class Data(object):
 
     def get_data(self, ep_start, step):
         offset = self.offset(ep_start, step)
-        X = self.df.iloc[offset:offset+self.window]
-        y = self.df.iloc[offset+self.window]
-        # [sfan] normalized by close price of the last timestep in the window
-        base = X.iloc[-1]['coinbase_close']
-        X = X / base
-        y = y / base
+        try:
+            X = self.df.iloc[offset:offset+self.window]
+            y = self.df.iloc[offset+self.window]
+            # [sfan] normalized by close price of the last timestep in the window
+            base = X.iloc[-1]['coinbase_close']
+            X = X / base
+            y = y / base
+        except IndexError:
+            X = None
+            y = None
+
         return X, y
 

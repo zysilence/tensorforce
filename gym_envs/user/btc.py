@@ -117,7 +117,7 @@ class BitcoinEnv(gym.Env):
             acc.ep.i = self.acc.train.ep.i + 1
         elif self.mode == Mode.TRAIN:
             # [sfan] randomly chose episode start point
-            acc.ep.i = self.np_random.randint(low=0, high=self.data.df.shape[0])
+            acc.ep.i = self.np_random.randint(low=0, high=self.data.df.shape[0] - self.hypers.STATE.step_window)
 
         # self.data.reset_cash_val()
         # self.data.set_cash_val(acc.ep.i, acc.step.i, 0., 0.)
@@ -175,10 +175,12 @@ class BitcoinEnv(gym.Env):
         )
         """
         next_state = self.get_next_state()
-
+        if next_state is not None:
+            terminal = False
+        else:
+            terminal = True
         reward = self.get_return()
 
-        terminal = False
         if total_now < self.stop_loss:
             terminal = True
         if terminal and self.mode in (Mode.TRAIN, Mode.TEST):
@@ -211,7 +213,10 @@ class BitcoinEnv(gym.Env):
     def get_next_state(self):
         acc = self.acc[self.mode.value]
         X, _ = self.data.get_data(acc.ep.i, acc.step.i)
-        return X.values[:, np.newaxis, :]  # height, width(nothing), depth
+        if X is not None:
+            return X.values[:, np.newaxis, :]  # height, width(nothing), depth
+        else:
+            return None
 
 
     def get_return(self, adv=True):
