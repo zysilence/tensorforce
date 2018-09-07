@@ -14,6 +14,7 @@ from box import Box
 import copy
 from enum import Enum
 import json
+import logging
 import os
 
 import gym
@@ -90,6 +91,10 @@ class BitcoinEnv(gym.Env):
 
         self.seed()
 
+        logging.basicConfig(level=logging.INFO)
+        self.logger = logging.getLogger()
+        self.logger.setLevel(logging.INFO)
+
     @property
     def states(self): return self.states_
 
@@ -106,7 +111,6 @@ class BitcoinEnv(gym.Env):
         acc = self.acc[self.mode.value]
         acc.step.i = 0
         acc.step.cash, acc.step.value = self.start_cash, self.start_value
-        acc.step.hold_value = self.start_value
         acc.step.totals = Box(
             trade=[self.start_cash + self.start_value],
             hold=[self.start_cash + self.start_value]
@@ -127,10 +131,7 @@ class BitcoinEnv(gym.Env):
         acc = self.acc[self.mode.value]
         totals = acc.step.totals
 
-        act_pct = {
-            0: 0,
-            1: .05,
-        }[action]
+        act_pct = self.hypers.ACTION.pct_map[str(action)]
         # act_btc = act_pct * (acc.step.cash if act_pct > 0 else acc.step.value)
         act_btc = act_pct * self.start_cash
 
@@ -139,10 +140,18 @@ class BitcoinEnv(gym.Env):
             Exchange.KRAKEN: 0.0026  # https://www.kraken.com/en-us/help/fees
         }[EXCHANGE]
 
+        # [sfan]
+        hold_btc = self.hypers.ACTION.pct_map[str(1)] * self.start_cash
+        hold_before = hold_btc - hold_btc * fee
+        if acc.step.value == 0:
+            cash_before = acc.step.cash - hold_btc
+        else:
+            cash_before = acc.step.cash
+
         # Perform the trade. In training mode, we'll let it dip into negative here, but then kill and punish below.
         # In testing/live, we'll just block the trade if they can't afford it
         if act_pct > 0 and acc.step.value == 0 and acc.step.cash >= self.stop_loss:
-            acc.step.value += act_btc - act_btc*fee
+            acc.step.value += act_btc - act_btc * fee
             acc.step.cash -= act_btc
         if act_pct == 0 and acc.step.value > 0:
             acc.step.cash += acc.step.value - acc.step.value * fee
@@ -161,9 +170,7 @@ class BitcoinEnv(gym.Env):
         totals.trade.append(total_now)
 
         # calculate what the reward would be "if I held", to calculate the actual reward's _advantage_ over holding
-        hold_before = acc.step.hold_value
-        acc.step.hold_value += pct_change * hold_before
-        totals.hold.append(acc.step.hold_value + self.start_cash)
+        totals.hold.append(cash_before + pct_change * hold_before)
 
         acc.step.i += 1
 
@@ -218,41 +225,50 @@ class BitcoinEnv(gym.Env):
         else:
             return None
 
-
-    def get_return(self, adv=True):
+    def get_return(self):
         acc = self.acc[self.mode.value]
         totals = acc.step.totals
-        if len(totals.trade) > 1:
-            trade = (totals.trade[-1] / totals.trade[-2]) - 1
+        action = acc.step.signals[-1]
+        if action:
+            if len(totals.trade) > 1:
+                reward = (totals.trade[-1] / totals.trade[-2]) - 1
+            else:
+                reward = totals.trade[-1] / (self.start_cash + self.start_value) - 1
         else:
-            trade = totals.trade[-1] / (self.start_cash + self.start_value) - 1
-        trade = trade * 1e4
+            # [sfan] if action is empty position(=0), the reward is calculated over holding
+            if len(totals.trade) > 1:
+                reward = (totals.hold[-1] / totals.trade[-2] - 1) * (-1)
+            else:
+                reward = (totals.hold[-1] / (self.start_cash + self.start_value) - 1) * (-1)
 
-        return trade
+        # [sfan] scaling or not?
+        reward = reward * 1e4
 
-    def episode_finished(self, runner):
-        if self.mode == Mode.TRAIN: return True
-
-        acc = self.acc.test
+        return reward
+    
+    def get_episode_stats(self):
+        """
+        [sfan] Calculate the episode stats, including:
+        * episode profit
+        * action stats
+        """
+        acc = self.acc.train
         totals = acc.step.totals
         signals = np.array(acc.step.signals)
-        n_uniques = np.unique(signals).shape[0]
-        # ret = self.get_return()
-        hold_ret = totals.hold[-1] / totals.hold[0] - 1
-        total_return = totals.trade[-1] / totals.trade[0] - 1
+        profit = totals.trade[-1] / totals.trade[0] - 1
 
-        acc.ep.returns.append(float(total_return))
-        acc.ep.uniques.append(n_uniques)
-
-        # Print (limit to note-worthy)
         eq_0 = (signals == 0).sum()
         gt_0 = (signals > 0).sum()
-        completion = int(acc.ep.i * self.data.ep_stride / self.data.df.shape[0] * 100)
-        steps = f"\tSteps: {acc.step.i}"
+        
+        stats = {
+            "profit": profit,
+            "action": {
+                "0": eq_0,
+                "1": gt_0
+            }
+        }
 
-        fm = '%.4f'
-        print(f"{completion}%{steps}\tTrade: {fm%total_return}\tHold: {fm%hold_ret}\tTrades:\t{eq_0}[=0]\t{gt_0}[>0]")
-        return True
+        return stats
 
     def run_deterministic(self, runner, print_results=True):
         next_state, terminal = self.reset(), False

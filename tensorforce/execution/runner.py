@@ -42,9 +42,29 @@ class Runner(BaseRunner):
         self.id = id_  # the worker's ID in a distributed run (default=0)
         self.current_timestep = None  # the time step in the current episode
 
+        # [sfan] add
+        self.episode_profits = None  # list of accumulated episode profits
+        self.episode_action_holds = None  # list of accumulated actions for 'hold'
+        self.episode_action_empties = None  # list of accumulated actions for 'empty'
+        self.reset(history)
+
     def close(self):
         self.agent.close()
         self.environment.close()
+
+    def reset(self, history=None):
+        """
+        [sfan] override version
+        """
+        if not history:
+            history = dict()
+
+        self.episode_rewards = history.get("episode_rewards", list())
+        self.episode_timesteps = history.get("episode_timesteps", list())
+        self.episode_times = history.get("episode_times", list())
+        self.episode_profits = history.get("episode_profits", list())
+        self.episode_action_holds = history.get("episode_action_holds", list())
+        self.episode_action_empties = history.get("episode_action_empties", list())
 
     # TODO: make average reward another possible criteria for runner-termination
     def run(self, num_timesteps=None, num_episodes=None, max_episode_timesteps=None, deterministic=False,
@@ -127,6 +147,21 @@ class Runner(BaseRunner):
             self.episode_rewards.append(episode_reward)
             self.episode_timesteps.append(self.current_timestep)
             self.episode_times.append(time_passed)
+
+            """
+            [sfan] Update episode stats from the user defined environment
+            self.environment: OpenAIGym instance
+            self.environment.gym: TimeLimit wrapped gym instance
+            self.environment.gym.env: gym instance
+            """
+            env = self.environment.gym.env or self.environment.gym
+            env_stats = env.get_episode_stats()
+            profit = env_stats.get('profit')
+            hold = env_stats.get('action').get('1')
+            empty = env_stats.get('action').get('0')
+            self.episode_profits.append(profit)
+            self.episode_action_holds.append(hold)
+            self.episode_action_empties.append(empty)
 
             self.global_episode += 1
 

@@ -8,3 +8,15 @@
     env = env.unwrapped
     ```
     'unwrapped'字段表示没有经过wrap的原始的env
+
+## 自定义环境
+* 虚拟环境下gym的安装路径是: "$VIRTUALENV_PATH/lib/python3.6/site-packages/gym/envs/user/", 为了能够在工程中管理自定义代码，
+需要将该目录建立一个软链接，链接到工程中的代码目录：
+```shell
+ln -s $PROJECT_PATH/gym_envs/user $VIRTUALENV_PATH/lib/python3.6/site-packages/gym/envs/user
+```
+* 由于修改了tensorforce的源码，同样为了工程中托管修改后的代码，需要建立该代码的软链接：
+```shell
+ln -s $PROJECT_PATH/tensorforce/execution/runner.py $VIRTUALENV_PATH/lib/python3.6/site-packages/tensorforce/tensorforce/execution/runner.py
+```
+
