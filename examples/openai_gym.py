@@ -163,11 +163,11 @@ def main():
             # [sfan] Profits
             logger.info('-'*50)
             logger.info("Episode profit: {}".format(r.episode_profits[-1]))
-            logger.info("Average profits: {:0.4f}".
+            logger.info("Average profits: {}".
                         format(sum(r.episode_profits) / len(r.episode_profits)))
-            logger.info("Average of last 500 profits: {:0.4f}".
+            logger.info("Average of last 500 profits: {}".
                         format(sum(r.episode_profits[-500:]) / min(500, len(r.episode_profits))))
-            logger.info("Average of last 100 profits: {:0.4f}".
+            logger.info("Average of last 100 profits: {}".
                         format(sum(r.episode_profits[-100:]) / min(100, len(r.episode_profits))))
             # [sfan] Holds
             logger.info('-'*50)
