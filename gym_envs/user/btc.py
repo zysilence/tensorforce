@@ -25,15 +25,7 @@ import numpy as np
 from tensorforce.execution import Runner
 
 
-
-class Mode(Enum):
-    TRAIN = 'train'
-    TEST = 'test'
-    LIVE = 'live'
-    TEST_LIVE = 'test_live'
-
 # See 6fc4ed2 for Scaling states/rewards
-
 
 class BitcoinEnv(gym.Env):
     metadata = {
@@ -49,6 +41,9 @@ class BitcoinEnv(gym.Env):
         # are state inputs); but starting capital does effect the learning process.
         self.start_cash, self.start_value = 1, 0  # .4, .4
 
+        # [sfan] default: 'train'; can be set by 'set_mode' method
+        self.mode = 'train'
+
         # We have these "accumulator" objects, which collect values over steps, over episodes, etc. Easier to keep
         # same-named variables separate this way.
         acc = dict(
@@ -60,7 +55,7 @@ class BitcoinEnv(gym.Env):
             step=dict(),  # setup in reset()
         )
         self.acc = Box(train=copy.deepcopy(acc), test=copy.deepcopy(acc))
-        self.data = Data(window=self.hypers.STATE.step_window, indicators={})
+        self.data = Data(window=self.hypers.STATE.step_window, indicators={}, mode=self.mode)
 
         # gdax min order size = .01btc; kraken = .002btc
         self.min_trade = {Exchange.GDAX: .01, Exchange.KRAKEN: .002}[EXCHANGE]
@@ -86,9 +81,6 @@ class BitcoinEnv(gym.Env):
         self.action_space = spaces.Discrete(2)
         self.observation_space = spaces.Box(low=-2, high=2, shape=(self.hypers.STATE.step_window, 1, self.cols_))
 
-        # [sfan] TODO: can be configurable
-        self.mode = Mode.TRAIN
-
         self.seed()
 
         logging.basicConfig(level=logging.INFO)
@@ -101,6 +93,12 @@ class BitcoinEnv(gym.Env):
     @property
     def actions(self): return self.actions_
 
+    # [sfan] mode: 'train' or 'test'
+    def set_mode(self, mode):
+        if self.mode != mode:
+            self.mode = mode
+            self.data = Data(window=self.hypers.STATE.step_window, indicators={}, mode=self.mode)
+
     # We don't want random-seeding for reproducibilityy! We _want_ two runs to give different results, because we only
     # trust the hyper combo which consistently gives positive results.
     def seed(self, seed=None):
@@ -108,7 +106,7 @@ class BitcoinEnv(gym.Env):
         return [seed]
 
     def reset(self):
-        acc = self.acc[self.mode.value]
+        acc = self.acc[self.mode]
         acc.step.i = 0
         acc.step.cash, acc.step.value = self.start_cash, self.start_value
         acc.step.totals = Box(
@@ -116,10 +114,10 @@ class BitcoinEnv(gym.Env):
             hold=[self.start_cash + self.start_value]
         )
         acc.step.signals = []
-        if self.mode == Mode.TEST:
+        if self.mode == 'test':
             # [sfan] TODO: read testset start index and end index from config
             acc.ep.i = self.acc.train.ep.i + 1
-        elif self.mode == Mode.TRAIN:
+        elif self.mode == 'train':
             # [sfan] randomly chose episode start point
             acc.ep.i = self.np_random.randint(low=0, high=self.data.df.shape[0] - self.hypers.STATE.step_window)
 
@@ -128,16 +126,22 @@ class BitcoinEnv(gym.Env):
         return self.get_next_state()
 
     def step(self, action):
-        acc = self.acc[self.mode.value]
+        acc = self.acc[self.mode]
         totals = acc.step.totals
 
         act_pct = self.hypers.ACTION.pct_map[str(action)]
         # act_btc = act_pct * (acc.step.cash if act_pct > 0 else acc.step.value)
         act_btc = act_pct * self.start_cash
 
+        """
         fee = {
             Exchange.GDAX: 0.0025,  # https://support.gdax.com/customer/en/portal/articles/2425097-what-are-the-fees-on-gdax-
             Exchange.KRAKEN: 0.0026  # https://www.kraken.com/en-us/help/fees
+        }[EXCHANGE]
+        """
+        fee = {
+            Exchange.GDAX: 0,  # https://support.gdax.com/customer/en/portal/articles/2425097-what-are-the-fees-on-gdax-
+            Exchange.KRAKEN: 0  # https://www.kraken.com/en-us/help/fees
         }[EXCHANGE]
 
         # [sfan]
@@ -190,11 +194,11 @@ class BitcoinEnv(gym.Env):
 
         if total_now < self.stop_loss:
             terminal = True
-        if terminal and self.mode in (Mode.TRAIN, Mode.TEST):
+        if terminal and self.mode in ('train', 'test'):
             # We're done.
             acc.step.signals.append(0)  # Add one last signal (to match length)
 
-        if terminal and self.mode in (Mode.LIVE, Mode.TEST_LIVE):
+        if terminal and self.mode in ('live', 'test_live'):
             raise NotImplementedError
 
         # if acc.step.value <= 0 or acc.step.cash <= 0: terminal = 1
@@ -218,7 +222,7 @@ class BitcoinEnv(gym.Env):
         raise NotImplementedError
 
     def get_next_state(self):
-        acc = self.acc[self.mode.value]
+        acc = self.acc[self.mode]
         X, _ = self.data.get_data(acc.ep.i, acc.step.i)
         if X is not None:
             return X.values[:, np.newaxis, :]  # height, width(nothing), depth
@@ -226,7 +230,7 @@ class BitcoinEnv(gym.Env):
             return None
 
     def get_return(self):
-        acc = self.acc[self.mode.value]
+        acc = self.acc[self.mode]
         totals = acc.step.totals
         action = acc.step.signals[-1]
         if action:
@@ -252,7 +256,7 @@ class BitcoinEnv(gym.Env):
         * episode profit
         * action stats
         """
-        acc = self.acc.train
+        acc = self.acc[self.mode]
         totals = acc.step.totals
         signals = np.array(acc.step.signals)
         profit = totals.trade[-1] / totals.trade[0] - 1
@@ -282,10 +286,10 @@ class BitcoinEnv(gym.Env):
 
         try:
             while self.data.has_more(self.acc.train.ep.i):
-                self.mode = Mode.TRAIN
+                self.mode = 'train'
                 # max_episode_timesteps not required, since we kill on (cash|value)<0 or max_repeats
                 runner.run(timesteps=train_steps)
-                self.mode = Mode.TEST
+                self.mode = 'test'
                 self.run_deterministic(runner, print_results=True)
         except IndexError:
             # FIXME data.has_more() issues

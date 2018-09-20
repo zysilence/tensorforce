@@ -27,9 +27,10 @@ EXCHANGE = Exchange.KRAKEN
 
 
 class Data(object):
-    def __init__(self, window=300, indicators={}):
+    def __init__(self, window=300, indicators={}, mode='train'):
         self.window = window
         self.indicators = indicators
+        self.mode = mode
 
         # self.ep_stride = ep_len  # disjoint
         # self.ep_stride = 100  # overlap; shift each episode by x seconds.
@@ -72,8 +73,13 @@ class Data(object):
         # too quiet before 2015, time waste. copy() to avoid pandas errors
         # [sfan] start year is read from the config file
         # df = df.loc['2015':].copy()
-        start_year = config_json['DATA']['start_year']
-        df = df.loc[start_year:].copy()
+        if 'train' == self.mode:
+            start_date = config_json['DATA']['train_start_date']
+            end_date = config_json['DATA']['train_end_date']
+        else:
+            start_date = config_json['DATA']['test_start_date']
+            end_date = config_json['DATA']['test_end_date']
+        df = df.loc[start_date:end_date].copy()
 
         # [sfan] fill nan
         df = df.replace([np.inf, -np.inf], np.nan).ffill()  # .bfill()?
@@ -84,6 +90,9 @@ class Data(object):
             columns=df.columns, index=df.index
         )
         """
+        # [sfan] produce data of period which is read from the config file
+        period = config_json['DATA']['period']
+
 
         """
         df['month'] = df.index.month

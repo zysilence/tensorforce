@@ -16,8 +16,11 @@
     * 与最近交易时间的数据对齐
     * 提出该数据 
 * period可以配置：1分钟、5分钟、15分钟、30分钟、1小时、4小时、1天
+* 不同周期的特征放一起？
+* 使用不同大小的feature map来提取不同feature？
 
 ## Network
-* 设计网络结构
+* 设计CNN网络结构
+* 尝试将蜡烛图变为2维输入，只有一个feature-map: (time_step, HLOC, 1)
 
 ## Parameters Tuning

@@ -9,16 +9,19 @@
   },
   "DATA": {
     "period": 60,
-    "start_year": "2015",
+    "train_start_date": "2015-01",
+    "train_end_date": "2017-8",
+    "test_start_date": "2017-09",
+    "test_end_date": "2018-6",
     "features": ["open", "close", "high", "low"]
   },
   "STATE": {
-    "step_window": 300
+    "step_window": 30
   },
   "ACTION": {
     "pct_map": {
       "0": 0,
-      "1": 0.05
+      "1": 1
     }
   }
 }

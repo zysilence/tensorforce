@@ -82,6 +82,12 @@ def main():
         monitor_video=args.monitor_video,
         visualize=args.visualize
     )
+    # [sfan] Set mode for env. Env data will be loaded after the mode being set.
+    mode = 'train'
+    if args.test:
+        mode = 'test'
+    env = environment.gym.env or environment.gym
+    env.set_mode(mode)
 
     if args.agent is not None:
         with open(args.agent, 'r') as fp:
