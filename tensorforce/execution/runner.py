@@ -102,15 +102,16 @@ class Runner(BaseRunner):
         if num_timesteps is not None:
             num_timesteps += self.agent.timestep
 
+        # Update global counters.
+        # [sfan] removed from episode while loop
+        self.global_episode = self.agent.episode  # global value (across all agents)
+        self.global_timestep = self.agent.timestep  # global value (across all agents)
+
         # episode loop
         while True:
             episode_start_time = time.time()
             state = self.environment.reset()
             self.agent.reset()
-
-            # Update global counters.
-            self.global_episode = self.agent.episode  # global value (across all agents)
-            self.global_timestep = self.agent.timestep  # global value (across all agents)
 
             episode_reward = 0
             self.current_timestep = 0
@@ -155,13 +156,14 @@ class Runner(BaseRunner):
             self.environment.gym.env: gym instance
             """
             env = self.environment.gym.env or self.environment.gym
-            env_stats = env.get_episode_stats()
-            profit = env_stats.get('profit')
-            hold = env_stats.get('action').get('1')
-            empty = env_stats.get('action').get('0')
-            self.episode_profits.append(profit)
-            self.episode_action_holds.append(hold)
-            self.episode_action_empties.append(empty)
+            if hasattr(env, 'get_episode_stats'):
+                env_stats = env.get_episode_stats()
+                profit = env_stats.get('profit')
+                hold = env_stats.get('action').get('1')
+                empty = env_stats.get('action').get('0')
+                self.episode_profits.append(profit)
+                self.episode_action_holds.append(hold)
+                self.episode_action_empties.append(empty)
 
             self.global_episode += 1
 
@@ -177,6 +179,10 @@ class Runner(BaseRunner):
             if (num_episodes is not None and self.global_episode >= num_episodes) or \
                     (num_timesteps is not None and self.global_timestep >= num_timesteps) or \
                     self.agent.should_stop():
+                break
+
+            # [sfan] Test is over
+            if testing and state is None:
                 break
 
     # keep backwards compatibility

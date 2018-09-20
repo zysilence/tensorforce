@@ -23,4 +23,7 @@
 * 设计CNN网络结构
 * 尝试将蜡烛图变为2维输入，只有一个feature-map: (time_step, HLOC, 1)
 
+## Episode
+* 尝试不设置长度的最大值？
+
 ## Parameters Tuning

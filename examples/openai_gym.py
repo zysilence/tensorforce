@@ -86,8 +86,12 @@ def main():
     mode = 'train'
     if args.test:
         mode = 'test'
+        # [sfan] Env is unwrapped.
+        environment.gym = environment.gym.unwrapped
+        environment.gym.env = None
     env = environment.gym.env or environment.gym
-    env.set_mode(mode)
+    if hasattr(env, 'set_mode'):
+        env.set_mode(mode)
 
     if args.agent is not None:
         with open(args.agent, 'r') as fp:
@@ -150,11 +154,12 @@ def main():
         :param id_: runner.id, i.e. the worker's ID in a distributed run (default=0)
         :return: True
         """
-        if r.episode % report_episodes == 0:
+        # if r.episode % report_episodes == 0:
+        if args.test or r.episode % report_episodes == 0:
             steps_per_second = r.timestep / (time.time() - r.start_time)
             logger.info('='*50)
             logger.info("Finished episode {:d} after {:d} timesteps. Steps Per Second {:0.2f}".format(
-                r.agent.episode, r.episode_timestep, steps_per_second
+                r.episode, r.episode_timestep, steps_per_second
             ))
             logger.info('-'*50)
             logger.info("Episode reward: {}".format(r.episode_rewards[-1]))

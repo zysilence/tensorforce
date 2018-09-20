@@ -116,7 +116,7 @@ class BitcoinEnv(gym.Env):
         acc.step.signals = []
         if self.mode == 'test':
             # [sfan] TODO: read testset start index and end index from config
-            acc.ep.i = self.acc.train.ep.i + 1
+            acc.ep.i += 1
         elif self.mode == 'train':
             # [sfan] randomly chose episode start point
             acc.ep.i = self.np_random.randint(low=0, high=self.data.df.shape[0] - self.hypers.STATE.step_window)
@@ -192,8 +192,10 @@ class BitcoinEnv(gym.Env):
             terminal = True
         reward = self.get_return()
 
+        # If reaching the stop loss level, the episode is terminated.
         if total_now < self.stop_loss:
             terminal = True
+
         if terminal and self.mode in ('train', 'test'):
             # We're done.
             acc.step.signals.append(0)  # Add one last signal (to match length)
