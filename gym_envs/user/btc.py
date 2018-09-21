@@ -248,7 +248,7 @@ class BitcoinEnv(gym.Env):
                 reward = (totals.hold[-1] / (self.start_cash + self.start_value) - 1) * (-1)
 
         # [sfan] scaling or not?
-        reward = reward * 1e4
+        # reward = reward * 1e4
 
         return reward
     
