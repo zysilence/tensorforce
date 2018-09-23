@@ -91,7 +91,7 @@ class Data(object):
         )
         """
         # [sfan] produce data of period which is read from the config file
-        period = config_json['DATA']['period']
+        period = config_json['DATA']['period']  # In minutes
 
 
         """
