@@ -172,32 +172,36 @@ def main():
 
             # [sfan] Logging episode stats from the user defined environment
             # [sfan] Profits
-            logger.info('-'*50)
-            logger.info("Episode profit: {}".format(r.episode_profits[-1]))
-            logger.info("Average profits: {}".
-                        format(sum(r.episode_profits) / len(r.episode_profits)))
-            logger.info("Average of last 500 profits: {}".
-                        format(sum(r.episode_profits[-500:]) / min(500, len(r.episode_profits))))
-            logger.info("Average of last 100 profits: {}".
-                        format(sum(r.episode_profits[-100:]) / min(100, len(r.episode_profits))))
+            if r.episode_profits:
+                logger.info('-'*50)
+                logger.info("Episode profit: {}".format(r.episode_profits[-1]))
+                logger.info("Average profits: {}".
+                            format(sum(r.episode_profits) / len(r.episode_profits)))
+                logger.info("Average of last 500 profits: {}".
+                            format(sum(r.episode_profits[-500:]) / min(500, len(r.episode_profits))))
+                logger.info("Average of last 100 profits: {}".
+                            format(sum(r.episode_profits[-100:]) / min(100, len(r.episode_profits))))
+
             # [sfan] Holds
-            logger.info('-'*50)
-            logger.info("Episode action-'hold' cnt: {}".format(r.episode_action_holds[-1]))
-            logger.info("Average action-'hold' cnt: {:0.4f}".
-                        format(sum(r.episode_action_holds) / len(r.episode_action_holds)))
-            logger.info("Average of last 500 action-'hold' cnt: {:0.4f}".
-                        format(sum(r.episode_action_holds[-500:]) / min(500, len(r.episode_action_holds))))
-            logger.info("Average of last 100 action-'hold' cnt: {:0.4f}".
-                        format(sum(r.episode_action_holds[-100:]) / min(100, len(r.episode_action_holds))))
-            # [sfan] Holds
-            logger.info('-'*50)
-            logger.info("Episode action-'empty' cnt: {}".format(r.episode_action_empties[-1]))
-            logger.info("Average action-'empty' cnt: {:0.4f}".
-                        format(sum(r.episode_action_empties) / len(r.episode_action_empties)))
-            logger.info("Average of last 500 action-'empty' cnt: {:0.4f}".
-                        format(sum(r.episode_action_empties[-500:]) / min(500, len(r.episode_action_empties))))
-            logger.info("Average of last 100 action-'empty' cnt: {:0.4f}".
-                        format(sum(r.episode_action_empties[-100:]) / min(100, len(r.episode_action_empties))))
+            if r.episode_action_holds:
+                logger.info('-'*50)
+                logger.info("Episode action-'hold' cnt: {}".format(r.episode_action_holds[-1]))
+                logger.info("Average action-'hold' cnt: {:0.4f}".
+                            format(sum(r.episode_action_holds) / len(r.episode_action_holds)))
+                logger.info("Average of last 500 action-'hold' cnt: {:0.4f}".
+                            format(sum(r.episode_action_holds[-500:]) / min(500, len(r.episode_action_holds))))
+                logger.info("Average of last 100 action-'hold' cnt: {:0.4f}".
+                            format(sum(r.episode_action_holds[-100:]) / min(100, len(r.episode_action_holds))))
+            # [sfan] Empties
+            if r.episode_action_empties:
+                logger.info('-'*50)
+                logger.info("Episode action-'empty' cnt: {}".format(r.episode_action_empties[-1]))
+                logger.info("Average action-'empty' cnt: {:0.4f}".
+                            format(sum(r.episode_action_empties) / len(r.episode_action_empties)))
+                logger.info("Average of last 500 action-'empty' cnt: {:0.4f}".
+                            format(sum(r.episode_action_empties[-500:]) / min(500, len(r.episode_action_empties))))
+                logger.info("Average of last 100 action-'empty' cnt: {:0.4f}".
+                            format(sum(r.episode_action_empties[-100:]) / min(100, len(r.episode_action_empties))))
 
         if args.save and args.save_episodes is not None and not r.episode % args.save_episodes:
             logger.info("Saving agent to {}".format(args.save))
