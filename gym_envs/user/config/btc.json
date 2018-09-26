@@ -8,7 +8,7 @@
     "b64secret": ""
   },
   "DATA": {
-    "period": 60,
+    "period": "1H",
     "train_start_date": "2017-11",
     "train_end_date": "2018-01",
     "test_start_date": "2018-04",

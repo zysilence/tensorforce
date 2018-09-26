@@ -49,14 +49,18 @@ class Data(object):
 
         filenames = {
             # 'bitstamp': 'bitstampUSD_1-min_data_2012-01-01_to_2018-06-27.csv',
-            'coinbase': 'coinbaseUSD_1-min_data_2014-12-01_to_2018-06-27.csv',
+            # 'coinbase': 'coinbaseUSD_1-min_data_2014-12-01_to_2018-06-27.csv',
+            'coinbase': 'coinbaseUSD_1H_data_2014-12-01_to_2018-06-27.csv',
             # 'coincheck': 'coincheckJPY_1-min_data_2014-10-31_to_2018-06-27.csv'
         }
         primary_table = 'coinbase'
         self.target = f"{primary_table}_close"
 
+        # [sfan] produce data of period which is read from the config file
+        period = config_json['DATA']['period']  # In minutes
         df = None
         for table, filename in filenames.items():
+            filename = f"{table}USD_{period}_data_2014-12-01_to_2018-06-27.csv"
             df_ = pd.read_csv(path.join(path.dirname(__file__), 'populate', 'bitcoin-historical-data', filename))
             col_renames_ = {k: f"{table}_{v}" for k, v in col_renames.items()}
             df_ = df_.rename(columns=col_renames_)
@@ -90,9 +94,6 @@ class Data(object):
             columns=df.columns, index=df.index
         )
         """
-        # [sfan] produce data of period which is read from the config file
-        period = config_json['DATA']['period']  # In minutes
-
 
         """
         df['month'] = df.index.month
