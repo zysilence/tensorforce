@@ -97,6 +97,8 @@ class Model(object):
                 from the Environment (e.g. reward normalization).
             tf_session_dump_dir (str): If non-empty string, all session.run calls will be dumped using the tensorflow
                 offline-debug session into the given directory.
+            execution: (dict)
+                - num_parallel: (int) number of parallel episodes
         """
         # Network crated from network in distribution_model.py
         # Needed for named_tensor access
@@ -126,6 +128,7 @@ class Model(object):
             self.summary_labels = set(self.summarizer_spec.get('labels', ()))
         self.summarizer = None
         self.graph_summary = None
+        self.summarizer_init_op = None
         self.flush_summarizer = None
 
         # Execution logic settings.
@@ -144,13 +147,27 @@ class Model(object):
 
         # Model's (tensorflow) buffers (states, actions, internals):
         # One record is inserted into these buffers when act(independent=False) method is called.
-        self.states_buffer = dict()
-        self.internals_buffer = dict()
-        self.actions_buffer = dict()
-        # Tensorflow int-index; reset to 0 when observe() is called.
-        self.buffer_index = None
-        # main-op executed in observe()
+        self.num_parallel = self.execution_spec.get('num_parallel')
+        if self.num_parallel is None:
+            self.num_parallel = 1
+
+        # self.list_states_buffer = [dict() for _ in range(self.num_parallel)]
+        # self.list_internals_buffer = [dict() for _ in range(self.num_parallel)]
+        # self.list_actions_buffer = [dict() for _ in range(self.num_parallel)]
+        self.list_states_buffer = dict()
+        self.list_internals_buffer = dict()
+        self.list_actions_buffer = dict()
+        self.list_buffer_index = [None for _ in range(self.num_parallel)]
         self.episode_output = None
+        self.episode_index = None
+        # else:
+        #     self.states_buffer = dict()
+        #     self.internals_buffer = dict()
+        #     self.actions_buffer = dict()
+        #     # Tensorflow int-index; reset to 0 when observe() is called.
+        #     self.buffer_index = None
+        #     # main-op executed in observe()
+        #     self.episode_output = None
         self.unbuffered_episode_output = None
 
         # Variable noise
@@ -167,7 +184,8 @@ class Model(object):
         self.registered_variables = None
 
         # 0D counter tensors
-        self.timestep = None
+        # self.timestep = None
+        self.list_timestep = [None for _ in range(self.num_parallel)]
         self.episode = None
         self.global_timestep = None
         self.global_episode = None
@@ -248,21 +266,23 @@ class Model(object):
                 self.fn_initialize()
 
                 if self.summarizer_spec is not None:
-                    self.summarizer = tf.contrib.summary.create_file_writer(
-                        logdir=self.summarizer_spec['directory'],
-                        max_queue=None,
-                        flush_millis=(self.summarizer_spec.get('flush', 10) * 1000),
-                        filename_suffix=None,
-                        name=None
-                    )
-
-                    default_summarizer = self.summarizer.as_default()
-                    if 'steps' in self.summarizer_spec:
-                        record_summaries = tf.contrib.summary.record_summaries_every_n_global_steps(
-                            n=self.summarizer_spec['steps'],
-                            global_step=self.global_timestep
+                    with tf.name_scope(name='summarizer'):
+                        self.summarizer = tf.contrib.summary.create_file_writer(
+                            logdir=self.summarizer_spec['directory'],
+                            max_queue=None,
+                            flush_millis=(self.summarizer_spec.get('flush', 10) * 1000),
+                            filename_suffix=None,
+                            name=None
                         )
-                    else:
+                        default_summarizer = self.summarizer.as_default()
+                        # Problem: not all parts of the graph are called on every step
+                        assert 'steps' not in self.summarizer_spec
+                        # if 'steps' in self.summarizer_spec:
+                        #     record_summaries = tf.contrib.summary.record_summaries_every_n_global_steps(
+                        #         n=self.summarizer_spec['steps'],
+                        #         global_step=self.global_timestep
+                        #     )
+                        # else:
                         record_summaries = tf.contrib.summary.always_record_summaries()
 
                     default_summarizer.__enter__()
@@ -290,31 +310,44 @@ class Model(object):
                     independent=independent
                 )
 
-                if 'graph' in self.summary_labels:
-                    graph_def = self.graph.as_graph_def()
-                    graph_str = tf.constant(value=graph_def.SerializeToString(), dtype=tf.string, shape=())
-                    self.graph_summary = tf.contrib.summary.graph(param=graph_str, step=self.global_timestep)
-                    if 'meta_param_recorder_class' in self.summarizer_spec:
-                        self.graph_summary = tf.group(
-                            self.graph_summary,
-                            self.summarizer_spec['meta_param_recorder_class'].build_metagraph_list()
-                        )
-
                 # Add all summaries specified in summary_labels
-                if any(k in self.summary_labels for k in ['inputs', 'states']):
+                if 'inputs' in self.summary_labels or 'states' in self.summary_labels:
                     for name in sorted(states):
-                        tf.contrib.summary.histogram(name=(self.scope + '/inputs/states/' + name), tensor=states[name])
-                if any(k in self.summary_labels for k in ['inputs', 'actions']):
+                        tf.contrib.summary.histogram(name=('states-' + name), tensor=states[name])
+                if 'inputs' in self.summary_labels or 'actions' in self.summary_labels:
                     for name in sorted(actions):
-                        tf.contrib.summary.histogram(name=(self.scope + '/inputs/actions/' + name), tensor=actions[name])
-                if any(k in self.summary_labels for k in ['inputs', 'rewards']):
-                    tf.contrib.summary.histogram(name=(self.scope + '/inputs/rewards'), tensor=reward)
+                        tf.contrib.summary.histogram(name=('actions-' + name), tensor=actions[name])
+                if 'inputs' in self.summary_labels or 'reward' in self.summary_labels:
+                    tf.contrib.summary.histogram(name='reward', tensor=reward)
+
+                if 'graph' in self.summary_labels:
+                    with tf.name_scope(name='summarizer'):
+                        graph_def = self.graph.as_graph_def()
+                        graph_str = tf.constant(
+                            value=graph_def.SerializeToString(),
+                            dtype=tf.string,
+                            shape=()
+                        )
+                        self.graph_summary = tf.contrib.summary.graph(
+                            param=graph_str,
+                            step=self.global_timestep
+                        )
+                        if 'meta_param_recorder_class' in self.summarizer_spec:
+                            self.graph_summary = tf.group(
+                                self.graph_summary,
+                                *self.summarizer_spec['meta_param_recorder_class'].build_metagraph_list()
+                            )
 
                 if self.summarizer_spec is not None:
-                    self.flush_summarizer = tf.contrib.summary.flush()
-
                     record_summaries.__exit__(None, None, None)
                     default_summarizer.__exit__(None, None, None)
+
+                    with tf.name_scope(name='summarizer'):
+                        self.flush_summarizer = tf.contrib.summary.flush()
+
+                        self.summarizer_init_op = tf.contrib.summary.summary_writer_initializer_op()
+                        assert len(self.summarizer_init_op) == 1
+                        self.summarizer_init_op = self.summarizer_init_op[0]
 
         # If we are a global model -> return here.
         # Saving, syncing, finalizing graph, session is done by local replica model.
@@ -522,7 +555,15 @@ class Model(object):
                     registered = True
                 # Top-level, hence no 'registered' argument.
                 variable = getter(name=name, **kwargs)
-                if not registered:
+                if registered:
+                    pass
+                elif name in self.all_variables:
+                    assert variable is self.all_variables[name]
+                    if kwargs.get('trainable', True):
+                        assert variable is self.variables[name]
+                        if 'variables' in self.summary_labels:
+                            tf.contrib.summary.histogram(name=name, tensor=variable)
+                else:
                     self.all_variables[name] = variable
                     if kwargs.get('trainable', True):
                         self.variables[name] = variable
@@ -601,14 +642,13 @@ class Model(object):
             global_variables = self.get_variables(include_submodules=True, include_nontrainable=True)
             # global_variables += [self.global_episode, self.global_timestep]
             init_op = tf.variables_initializer(var_list=global_variables)
+            if self.summarizer_init_op is not None:
+                init_op = tf.group(init_op, self.summarizer_init_op)
             if self.graph_summary is None:
                 ready_op = tf.report_uninitialized_variables(var_list=global_variables)
                 ready_for_local_init_op = None
                 local_init_op = None
             else:
-                summarizer_init_op = tf.contrib.summary.summary_writer_initializer_op()
-                assert len(summarizer_init_op) == 1
-                init_op = tf.group(init_op, summarizer_init_op[0])
                 ready_op = None
                 ready_for_local_init_op = tf.report_uninitialized_variables(var_list=global_variables)
                 local_init_op = self.graph_summary
@@ -619,10 +659,8 @@ class Model(object):
             # global_variables += [self.global_episode, self.global_timestep]
             local_variables = self.get_variables(include_submodules=True, include_nontrainable=True)
             init_op = tf.variables_initializer(var_list=global_variables)
-            if self.summarizer_spec is not None:
-                summarizer_init_op = tf.contrib.summary.summary_writer_initializer_op()
-                assert len(summarizer_init_op) == 1
-                init_op = tf.group(init_op, summarizer_init_op[0])
+            if self.summarizer_init_op is not None:
+                init_op = tf.group(init_op, self.summarizer_init_op)
             ready_op = tf.report_uninitialized_variables(var_list=(global_variables + local_variables))
             ready_for_local_init_op = tf.report_uninitialized_variables(var_list=global_variables)
             if self.graph_summary is None:
@@ -847,40 +885,49 @@ class Model(object):
             trainable=False
         )
 
+        self.episode_index = tf.placeholder(
+            name='episode_index',
+            shape=(),
+            dtype=tf.int32,
+        )
+
         # States buffer variable
         for name in sorted(self.states_spec):
-            self.states_buffer[name] = tf.get_variable(
-                name=('state-' + name),
-                shape=((self.batching_capacity,) + tuple(self.states_spec[name]['shape'])),
+            self.list_states_buffer[name] = tf.get_variable(
+                name=('state-{}'.format(name)),
+                shape=((self.num_parallel, self.batching_capacity,) + tuple(self.states_spec[name]['shape'])),
                 dtype=util.tf_dtype(self.states_spec[name]['type']),
                 trainable=False
             )
 
         # Internals buffer variable
         for name in sorted(self.internals_spec):
-            self.internals_buffer[name] = tf.get_variable(
-                name=('internal-' + name),
-                shape=((self.batching_capacity,) + tuple(self.internals_spec[name]['shape'])),
+            self.list_internals_buffer[name] = tf.get_variable(
+                name=('internal-{}'.format(name)),
+                shape=((self.num_parallel, self.batching_capacity,) + tuple(self.internals_spec[name]['shape'])),
                 dtype=util.tf_dtype(self.internals_spec[name]['type']),
                 trainable=False
             )
 
         # Actions buffer variable
         for name in sorted(self.actions_spec):
-            self.actions_buffer[name] = tf.get_variable(
-                name=('action-' + name),
-                shape=((self.batching_capacity,) + tuple(self.actions_spec[name]['shape'])),
+            self.list_actions_buffer[name]= tf.get_variable(
+                name=('action-{}'.format(name)),
+                shape=((self.num_parallel, self.batching_capacity,) + tuple(self.actions_spec[name]['shape'])),
                 dtype=util.tf_dtype(self.actions_spec[name]['type']),
                 trainable=False
             )
 
         # Buffer index
-        self.buffer_index = tf.get_variable(
+        # for index in range(self.num_parallel):
+        self.list_buffer_index = tf.get_variable(
             name='buffer-index',
-            shape=(),
+            shape=(self.num_parallel),
             dtype=util.tf_dtype('int'),
             trainable=False
         )
+        # self.list_buffer_index = tf.convert_to_tensor(self.list_buffer_index)
+
 
     def tf_preprocess(self, states, actions, reward):
         """
@@ -918,12 +965,13 @@ class Model(object):
         exploration_value = exploration.tf_explore(
             episode=self.global_episode,
             timestep=self.global_timestep,
-            action_spec=action_spec
+            shape=action_spec['shape']
         )
+        exploration_value = tf.expand_dims(input=exploration_value, axis=0)
 
         if action_spec['type'] == 'bool':
             action = tf.where(
-                condition=(tf.random_uniform(shape=action_shape[0]) < exploration_value),
+                condition=(tf.random_uniform(shape=action_shape) < exploration_value),
                 x=(tf.random_uniform(shape=action_shape) < 0.5),
                 y=action
             )
@@ -936,8 +984,6 @@ class Model(object):
             )
 
         elif action_spec['type'] == 'float':
-            for _ in range(util.rank(action) - 1):
-                exploration_value = tf.expand_dims(input=exploration_value, axis=-1)
             action += exploration_value
             if 'min_value' in action_spec:
                 action = tf.clip_by_value(
@@ -1054,32 +1100,43 @@ class Model(object):
             Stores current states, internals and actions in buffer. Increases timesteps.
             """
             operations = list()
+            index = self.episode_index
+
 
             batch_size = tf.shape(input=states[next(iter(sorted(states)))])[0]
             for name in sorted(states):
                 operations.append(tf.assign(
-                    ref=self.states_buffer[name][self.buffer_index: self.buffer_index + batch_size],
+                    ref=self.list_states_buffer[name][index, self.list_buffer_index[index]: self.list_buffer_index[index] + batch_size],
                     value=states[name]
                 ))
             for name in sorted(internals):
                 operations.append(tf.assign(
-                    ref=self.internals_buffer[name][self.buffer_index: self.buffer_index + batch_size],
+                    ref=self.list_internals_buffer[name][index, self.list_buffer_index[index]: self.list_buffer_index[index] + batch_size],
                     value=internals[name]
                 ))
             for name in sorted(self.actions_output):
                 operations.append(tf.assign(
-                    ref=self.actions_buffer[name][self.buffer_index: self.buffer_index + batch_size],
+                    ref=self.list_actions_buffer[name][index, self.list_buffer_index[index]: self.list_buffer_index[index] + batch_size],
                     value=self.actions_output[name]
                 ))
 
             with tf.control_dependencies(control_inputs=operations):
                 operations = list()
 
-                operations.append(tf.assign_add(ref=self.buffer_index, value=batch_size))
+                operations.append(tf.assign(
+                    ref=self.list_buffer_index[index: index+1],
+                    value=tf.add(self.list_buffer_index[index: index+1], tf.constant([1]))
+                ))
 
-                # Increment timestep
-                operations.append(tf.assign_add(ref=self.timestep, value=tf.to_int64(x=batch_size)))
-                operations.append(tf.assign_add(ref=self.global_timestep, value=tf.to_int64(x=batch_size)))
+                    # Increment timestep
+                operations.append(tf.assign_add(
+                    ref=self.timestep,
+                    value=tf.to_int64(x=batch_size)
+                ))
+                operations.append(tf.assign_add(
+                    ref=self.global_timestep,
+                    value=tf.to_int64(x=batch_size)
+                ))
 
             with tf.control_dependencies(control_inputs=operations):
                 # Trivial operation to enforce control dependency
@@ -1111,13 +1168,14 @@ class Model(object):
         num_episodes = tf.count_nonzero(input_tensor=terminal, dtype=util.tf_dtype('int'))
         increment_episode = tf.assign_add(ref=self.episode, value=tf.to_int64(x=num_episodes))
         increment_global_episode = tf.assign_add(ref=self.global_episode, value=tf.to_int64(x=num_episodes))
+        index = self.episode_index
 
         with tf.control_dependencies(control_inputs=(increment_episode, increment_global_episode)):
             # Stop gradients
-            fn = (lambda x: tf.stop_gradient(input=x[:self.buffer_index]))
-            states = util.map_tensors(fn=fn, tensors=self.states_buffer)
-            internals = util.map_tensors(fn=fn, tensors=self.internals_buffer)
-            actions = util.map_tensors(fn=fn, tensors=self.actions_buffer)
+            fn = (lambda x: tf.stop_gradient(input=x[:self.list_buffer_index[index]]))
+            states = util.map_tensors(fn=fn, tensors=self.list_states_buffer, index=index)
+            internals = util.map_tensors(fn=fn, tensors=self.list_internals_buffer, index=index)
+            actions = util.map_tensors(fn=fn, tensors=self.list_actions_buffer, index=index)
             terminal = tf.stop_gradient(input=terminal)
             reward = tf.stop_gradient(input=reward)
 
@@ -1132,15 +1190,16 @@ class Model(object):
 
         with tf.control_dependencies(control_inputs=(observation,)):
             # Reset buffer index.
-            reset_index = tf.assign(ref=self.buffer_index, value=0)
+            reset_index  =tf.assign(ref=self.list_buffer_index[index], value=0)
 
         with tf.control_dependencies(control_inputs=(reset_index,)):
             # Trivial operation to enforce control dependency.
             self.episode_output = self.global_episode + 0
 
-        self.buffer_index_reset_op = tf.assign(ref=self.buffer_index, value=0)
+        self.buffer_index_reset_op = tf.assign(ref=self.list_buffer_index[index], value=0)
 
-        # TODO: add up rewards per episode and add summary_label 'episode-reward'
+         # TODO: add up rewards per episode and add summary_label 'episode-reward'
+
 
     def create_atomic_observe_operations(self, states, actions, internals, terminal, reward):
         """
@@ -1207,7 +1266,7 @@ class Model(object):
         Returns the TensorFlow variables used by the model.
 
         Args:
-            include_submodules: Includes variables of submodules (e.g. baseline, target network)  
+            include_submodules: Includes variables of submodules (e.g. baseline, target network)
                 if true.
             include_nontrainable: Includes non-trainable variables if true.
 
@@ -1246,7 +1305,6 @@ class Model(object):
             tuple:
                 Current episode, timestep counter and the shallow-copied list of internal state initialization Tensors.
         """
-
         fetches = [self.global_episode, self.global_timestep]
 
         # Loop through all preprocessors and reset them as well.
@@ -1272,7 +1330,8 @@ class Model(object):
         terminal=None,
         reward=None,
         deterministic=None,
-        independent=None
+        independent=None,
+        index=0
     ):
         """
         Returns the feed-dict for the model's acting and observing tf fetches.
@@ -1346,9 +1405,11 @@ class Model(object):
         if independent is not None:
             feed_dict[self.independent_input] = independent
 
+        feed_dict[self.episode_index] = index
+
         return feed_dict
 
-    def act(self, states, internals, deterministic=False, independent=False, fetch_tensors=None):
+    def act(self, states, internals, deterministic=False, independent=False, fetch_tensors=None, index=0):
         """
         Does a forward pass through the model to retrieve action (outputs) given inputs for state (and internal
         state, if applicable (e.g. RNNs))
@@ -1360,6 +1421,7 @@ class Model(object):
             independent (bool): If true, action is not followed by observe (and hence not included
                 in updates).
             fetch_tensors (list): List of names of additional tensors (from the model's network) to fetch (and return).
+            index: (int) index of the episode we want to produce the next action
 
         Returns:
             tuple:
@@ -1391,7 +1453,8 @@ class Model(object):
             states=states,
             internals=internals,
             deterministic=deterministic,
-            independent=independent
+            independent=independent,
+            index=index
         )
 
         fetch_list = self.monitored_session.run(fetches=fetches, feed_dict=feed_dict)
@@ -1404,27 +1467,27 @@ class Model(object):
 
         if self.network is not None and fetch_tensors is not None:
             fetch_dict = dict()
-            for index, tensor in enumerate(fetch_list[3:]):
-                name = fetch_tensors[index]
+            for index_, tensor in enumerate(fetch_list[3:]):
+                name = fetch_tensors[index_]
                 fetch_dict[name] = tensor
             return actions, internals, timestep, fetch_dict
         else:
             return actions, internals, timestep
 
-    def observe(self, terminal, reward):
+    def observe(self, terminal, reward, index=0):
         """
         Adds an observation (reward and is-terminal) to the model without updating its trainable variables.
 
         Args:
             terminal (List[bool]): List of is-terminal signals.
             reward (List[float]): List of reward signals.
+            index: (int) parallel episode you want to observe
 
         Returns:
             The value of the model-internal episode counter.
         """
-
         fetches = self.episode_output
-        feed_dict = self.get_feed_dict(terminal=terminal, reward=reward)
+        feed_dict = self.get_feed_dict(terminal=terminal, reward=reward, index=index)
 
         episode = self.monitored_session.run(fetches=fetches, feed_dict=feed_dict)
 
@@ -1446,9 +1509,9 @@ class Model(object):
 
     def save(self, directory=None, append_timestep=True):
         """
-        Save TensorFlow model. If no checkpoint directory is given, the model's default saver  
-        directory is used. Optionally appends current timestep to prevent overwriting previous  
-        checkpoint files. Turn off to be able to load model from the same given path argument as  
+        Save TensorFlow model. If no checkpoint directory is given, the model's default saver
+        directory is used. Optionally appends current timestep to prevent overwriting previous
+        checkpoint files. Turn off to be able to load model from the same given path argument as
         given here.
 
         Args:
@@ -1473,8 +1536,8 @@ class Model(object):
 
     def restore(self, directory=None, file=None):
         """
-        Restore TensorFlow model. If no checkpoint file is given, the latest checkpoint is  
-        restored. If no checkpoint directory is given, the model's default saver directory is  
+        Restore TensorFlow model. If no checkpoint file is given, the latest checkpoint is
+        restored. If no checkpoint directory is given, the model's default saver directory is
         used (unless file specifies the entire path).
 
         Args:

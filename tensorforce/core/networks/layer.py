@@ -47,7 +47,15 @@ class Layer(object):
 
         def custom_getter(getter, name, registered=False, **kwargs):
             variable = getter(name=name, registered=True, **kwargs)
-            if not registered:
+            if registered:
+                pass
+            elif name in self.all_variables:
+                assert variable is self.all_variables[name]
+                if kwargs.get('trainable', True):
+                    assert variable is self.variables[name]
+                    if 'variables' in self.summary_labels:
+                        tf.contrib.summary.histogram(name=name, tensor=variable)
+            else:
                 self.all_variables[name] = variable
                 if kwargs.get('trainable', True):
                     self.variables[name] = variable
@@ -164,19 +172,34 @@ class Input(Layer):
                     'Input "{}" doesn\'t exist, Available inputs: {}'.format(self.names, keys)
                 )
 
-
         inputs = list()
+        max_shape = ()
         for name in self.names:
             if name == '*' or name == 'previous':
                 # like normal list network_spec
-                inputs.append(x)
+                tensor = x
             elif name in self.named_tensors:
-                inputs.append(self.named_tensors[name])
+                tensor = self.named_tensors[name]
             else:
                 keys = sorted(self.named_tensors)
                 raise TensorForceError(
                     'Input "{}" doesn\'t exist, Available inputs: {}'.format(name, keys)
                 )
+            inputs.append(tensor)
+            shape = util.shape(x=tensor)
+            if len(shape) > len(max_shape):
+                max_shape = shape
+
+        for n, tensor in enumerate(inputs):
+            shape = util.shape(x=tensor)
+            if len(shape) < len(max_shape):
+                # assert shape == max_shape[:len(shape)], (shape, max_shape)
+                for i in range(len(shape), len(max_shape)):
+                    # assert max_shape[i] == 1, (shape, max_shape)
+                    tensor = tf.expand_dims(input=tensor, axis=i)
+                inputs[n] = tensor
+            # else:
+            #     assert shape == max_shape, (shape, max_shape)
 
         if self.aggregation_type == 'concat':
             x = tf.concat(values=inputs, axis=self.axis)
@@ -400,7 +423,7 @@ class Nonlinearity(Layer):
 
 class Dropout(Layer):
     """
-    Dropout layer. If using dropout, add this layer after inputs and after dense layers. For  
+    Dropout layer. If using dropout, add this layer after inputs and after dense layers. For
     LSTM, dropout is handled independently as an argument. Not available for Conv2d yet.
     """
 
@@ -550,6 +573,7 @@ class Linear(Layer):
         bias=True,
         l2_regularization=0.0,
         l1_regularization=0.0,
+        trainable=True,
         named_tensors=None,
         scope='linear',
         summary_labels=()
@@ -569,6 +593,7 @@ class Linear(Layer):
         self.bias_init = bias
         self.l2_regularization = l2_regularization
         self.l1_regularization = l1_regularization
+        self.trainable = trainable
         super(Linear, self).__init__(named_tensors=named_tensors, scope=scope, summary_labels=summary_labels)
 
     def tf_apply(self, x, update=False):
@@ -669,7 +694,8 @@ class Linear(Layer):
                 name='W',
                 shape=weights_shape,
                 dtype=tf.float32,
-                initializer=self.weights_init
+                initializer=self.weights_init,
+                trainable=self.trainable
             )
 
         x = tf.matmul(a=x, b=self.weights)
@@ -681,7 +707,12 @@ class Linear(Layer):
             if isinstance(self.bias_init, tf.Tensor):
                 self.bias = self.bias_init
             else:
-                self.bias = tf.get_variable(name='b', shape=bias_shape, dtype=tf.float32, initializer=self.bias_init)
+                self.bias = tf.get_variable(
+                    name='b',
+                    shape=bias_shape,
+                    dtype=tf.float32,
+                    initializer=self.bias_init,
+                    trainable=self.trainable)
 
             x = tf.nn.bias_add(value=x, bias=self.bias)
 
@@ -724,9 +755,10 @@ class Dense(Layer):
         l2_regularization=0.0,
         l1_regularization=0.0,
         skip=False,
+        trainable=True,
         named_tensors=None,
         scope='dense',
-        summary_labels=()
+        summary_labels=(),
     ):
         """
         Dense layer.
@@ -754,7 +786,8 @@ class Dense(Layer):
             bias=bias,
             l2_regularization=l2_regularization,
             l1_regularization=l1_regularization,
-            summary_labels=summary_labels
+            summary_labels=summary_labels,
+            trainable=trainable
         )
         if self.skip:
             self.linear_skip = Linear(
@@ -762,7 +795,8 @@ class Dense(Layer):
                 bias=bias,
                 l2_regularization=l2_regularization,
                 l1_regularization=l1_regularization,
-                summary_labels=summary_labels
+                summary_labels=summary_labels,
+                trainable=trainable
             )
         # TODO: Consider creating two nonlinearity variables when skip is used and learning beta
         #       Right now, only a single beta can be learned
@@ -801,7 +835,7 @@ class Dense(Layer):
         if self.skip:
             regularization_loss = self.linear_skip.regularization_loss()
             if regularization_loss is not None:
-                losses.append(regularization_loss)          
+                losses.append(regularization_loss)
 
         if len(losses) > 0:
             return tf.add_n(inputs=losses)
@@ -855,14 +889,14 @@ class Dueling(Layer):
             size=1, bias=bias,
             l2_regularization=l2_regularization,
             l1_regularization=l1_regularization,
-            summary_labels=summary_labels
+            summary_labels=summary_labels,
         )
         self.advantage_layer = Linear(
             size=size,
             bias=bias,
             l2_regularization=l2_regularization,
             l1_regularization=l1_regularization,
-            summary_labels=summary_labels
+            summary_labels=summary_labels,
         )
         self.output = output
         self.nonlinearity = Nonlinearity(summary_labels=summary_labels, **util.prepare_kwargs(activation))

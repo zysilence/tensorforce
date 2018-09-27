@@ -30,7 +30,12 @@ class Exploration(object):
 
         def custom_getter(getter, name, registered=False, **kwargs):
             variable = getter(name=name, registered=True, **kwargs)
-            if not registered:
+            if registered:
+                pass
+            elif name in self.variables:
+                assert variable is self.variables[name]
+            else:
+                assert not kwargs['trainable']
                 self.variables[name] = variable
             return variable
 
@@ -40,7 +45,7 @@ class Exploration(object):
             custom_getter_=custom_getter
         )
 
-    def tf_explore(self, episode, timestep, action_spec):
+    def tf_explore(self, episode, timestep, shape):
         """
         Creates exploration value, e.g. compute an epsilon for epsilon-greedy or sample normal  
         noise.

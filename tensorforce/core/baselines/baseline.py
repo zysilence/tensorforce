@@ -39,7 +39,15 @@ class Baseline(object):
 
         def custom_getter(getter, name, registered=False, **kwargs):
             variable = getter(name=name, registered=True, **kwargs)
-            if not registered:
+            if registered:
+                pass
+            elif name in self.all_variables:
+                assert variable is self.all_variables[name]
+                if kwargs.get('trainable', True):
+                    assert variable is self.variables[name]
+                    if 'variables' in self.summary_labels:
+                        tf.contrib.summary.histogram(name=name, tensor=variable)
+            else:
                 self.all_variables[name] = variable
                 if kwargs.get('trainable', True):
                     self.variables[name] = variable

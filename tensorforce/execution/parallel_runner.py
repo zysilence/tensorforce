@@ -25,7 +25,7 @@ import warnings
 from inspect import getargspec
 from tqdm import tqdm
 
-class Runner(BaseRunner):
+class ParallelRunner(BaseRunner):
     """
     Simple runner for non-realtime single-process execution.
     """
@@ -37,38 +37,20 @@ class Runner(BaseRunner):
         Args:
             id_ (int): The ID of this Runner (for distributed TF runs).
         """
-        super(Runner, self).__init__(agent, environment, repeat_actions, history)
+        super(ParallelRunner, self).__init__(agent, environment, repeat_actions, history)
 
         self.id = id_  # the worker's ID in a distributed run (default=0)
         self.current_timestep = None  # the time step in the current episode
-
-        # [sfan] add
-        self.episode_profits = None  # list of accumulated episode profits
-        self.episode_action_holds = None  # list of accumulated actions for 'hold'
-        self.episode_action_empties = None  # list of accumulated actions for 'empty'
-        self.reset(history)
+        self.episode_actions = []
+        self.num_parallel = self.agent.execution['num_parallel']
+        print('ParallelRunner with {} parallel buffers.'.format(self.num_parallel))
 
     def close(self):
         self.agent.close()
         self.environment.close()
 
-    def reset(self, history=None):
-        """
-        [sfan] override version
-        """
-        if not history:
-            history = dict()
-
-        self.episode_rewards = history.get("episode_rewards", list())
-        self.episode_timesteps = history.get("episode_timesteps", list())
-        self.episode_times = history.get("episode_times", list())
-        self.episode_profits = history.get("episode_profits", list())
-        self.episode_action_holds = history.get("episode_action_holds", list())
-        self.episode_action_empties = history.get("episode_action_empties", list())
-
     # TODO: make average reward another possible criteria for runner-termination
-    def run(self, num_timesteps=None, num_episodes=None, max_episode_timesteps=None, deterministic=False,
-            episode_finished=None, summary_report=None, summary_interval=None, timesteps=None, episodes=None, testing=False, sleep=None
+    def run(self, num_timesteps=None, num_episodes=None, max_episode_timesteps=None, deterministic=False, episode_finished=None, summary_report=None, summary_interval=None, timesteps=None, episodes=None, testing=False, sleep=None
             ):
         """
         Args:
@@ -102,13 +84,10 @@ class Runner(BaseRunner):
         if num_timesteps is not None:
             num_timesteps += self.agent.timestep
 
-        # Update global counters.
-        # [sfan] removed from episode while loop
-        self.global_episode = self.agent.episode  # global value (across all agents)
-        self.global_timestep = self.agent.timestep  # global value (across all agents)
-
         # add progress bar
         with tqdm(total=num_episodes) as pbar:
+            # episode loop
+            index = 0
             while True:
                 episode_start_time = time.time()
                 state = self.environment.reset()
@@ -123,7 +102,7 @@ class Runner(BaseRunner):
 
                 # time step (within episode) loop
                 while True:
-                    action = self.agent.act(states=state, deterministic=deterministic)
+                    action = self.agent.act(states=state, deterministic=deterministic, index=index)
 
                     reward = 0
                     for _ in xrange(self.repeat_actions):
@@ -136,7 +115,7 @@ class Runner(BaseRunner):
                         terminal = True
 
                     if not testing:
-                        self.agent.observe(terminal=terminal, reward=reward)
+                        self.agent.observe(terminal=terminal, reward=reward, index=index)
 
                     self.global_timestep += 1
                     self.current_timestep += 1
@@ -148,27 +127,14 @@ class Runner(BaseRunner):
                     if sleep is not None:
                         time.sleep(sleep)
 
+                index = (index + 1) % self.num_parallel
+
                 # Update our episode stats.
                 time_passed = time.time() - episode_start_time
                 self.episode_rewards.append(episode_reward)
                 self.episode_timesteps.append(self.current_timestep)
                 self.episode_times.append(time_passed)
-
-                """
-                [sfan] Update episode stats from the user defined environment
-                self.environment: OpenAIGym instance
-                self.environment.gym: TimeLimit wrapped gym instance
-                self.environment.gym.env: gym instance
-                """
-                env = self.environment.gym.env or self.environment.gym
-                if hasattr(env, 'get_episode_stats'):
-                    env_stats = env.get_episode_stats()
-                    profit = env_stats.get('profit')
-                    hold = env_stats.get('action').get('1')
-                    empty = env_stats.get('action').get('0')
-                    self.episode_profits.append(profit)
-                    self.episode_action_holds.append(hold)
-                    self.episode_action_empties.append(empty)
+                self.episode_actions.append(self.environment.conv_action)
 
                 self.global_episode += 1
                 pbar.update(1)
@@ -186,18 +152,4 @@ class Runner(BaseRunner):
                         (num_timesteps is not None and self.global_timestep >= num_timesteps) or \
                         self.agent.should_stop():
                     break
-                # [sfan] Test is over
-                if testing and state is None:
-                    break
-            if num_episodes and self.global_episode:
-                pbar.update(num_episodes - self.global_episode)
-
-    # keep backwards compatibility
-    @property
-    def episode_timestep(self):
-        return self.current_timestep
-
-
-# more descriptive alias for Runner class
-DistributedTFRunner = Runner
-SingleRunner = Runner
+            pbar.update(num_episodes - self.global_episode)

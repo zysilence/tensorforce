@@ -14,10 +14,11 @@
 # ==============================================================================
 
 import importlib
+import json
 import logging
+import os
 import numpy as np
 import tensorflow as tf
-from tensorflow.core.util.event_pb2 import SessionLog
 
 from tensorforce import TensorForceError
 
@@ -112,15 +113,17 @@ def tf_dtype(dtype):
         raise TensorForceError("Error: Type conversion from type {} not supported.".format(str(dtype)))
 
 
-def map_tensors(fn, tensors):
+def map_tensors(fn, tensors, index=None):
     if tensors is None:
         return None
     elif isinstance(tensors, tuple):
         return tuple(map_tensors(fn=fn, tensors=tensor) for tensor in tensors)
     elif isinstance(tensors, list):
         return [map_tensors(fn=fn, tensors=tensor) for tensor in tensors]
-    elif isinstance(tensors, dict):
+    elif isinstance(tensors, dict) and index is None:
         return {key: map_tensors(fn=fn, tensors=tensor) for key, tensor in tensors.items()}
+    elif isinstance(tensors, dict) and index is not None:
+        return {key: map_tensors(fn=fn, tensors=tensor[index]) for key, tensor in tensors.items()}
     elif isinstance(tensors, set):
         return {map_tensors(fn=fn, tensors=tensor) for tensor in tensors}
     else:
@@ -164,6 +167,9 @@ def get_object(obj, predefined_objects=None, default_object=None, kwargs=None):
     args = ()
     kwargs = dict() if kwargs is None else kwargs
 
+    if isinstance(obj, str) and os.path.isfile(obj):
+        with open(obj, 'r') as fp:
+            obj = json.load(fp=fp)
     if isinstance(obj, dict):
         kwargs.update(obj)
         obj = kwargs.pop('type', None)

@@ -19,77 +19,10 @@ from __future__ import division
 
 import tensorflow as tf
 
-from tensorforce import util, TensorForceError
 from tensorforce.models import DistributionModel
 
-from tensorforce.core.networks import Network, LayerBasedNetwork, Dense, Linear, TFLayer, Nonlinearity
+from tensorforce.core.networks import Network
 from tensorforce.core.optimizers import Optimizer, Synchronization
-
-
-class DDPGCriticNetwork(LayerBasedNetwork):
-    def __init__(self, scope='ddpg-critic-network', summary_labels=(), size_t0=400, size_t1=300):
-        super(DDPGCriticNetwork, self).__init__(scope=scope, summary_labels=summary_labels)
-
-        self.t0l = Linear(size=size_t0, scope='linear0')
-        self.t0b = TFLayer(layer='batch_normalization', scope='batchnorm0', center=True, scale=True)
-        self.t0n = Nonlinearity(name='relu', scope='relu0')
-
-        self.t1l = Linear(size=size_t1, scope='linear1')
-        self.t1b = TFLayer(layer='batch_normalization', scope='batchnorm1', center=True, scale=True)
-        self.t1n = Nonlinearity(name='relu', scope='relu1')
-
-        self.t2d = Dense(size=1, activation='tanh', scope='dense0',
-                         weights=tf.random_uniform_initializer(minval=-3e-3, maxval=3e-3))
-
-        self.add_layer(self.t0l)
-        self.add_layer(self.t0b)
-        self.add_layer(self.t0n)
-
-        self.add_layer(self.t1l)
-        self.add_layer(self.t1b)
-        self.add_layer(self.t1n)
-
-        self.add_layer(self.t2d)
-
-    def tf_apply(self, x, internals, update, return_internals=False):
-        assert x['states'], x['actions']
-
-        if isinstance(x['states'], dict):
-            if len(x['states']) != 1:
-                raise TensorForceError('DDPG critic network must have only one state input, but {} given.'.format(
-                    len(x['states'])))
-            x_states = x['states'][next(iter(sorted(x['states'])))]
-        else:
-            x_states = x['states']
-
-        if isinstance(x['actions'], dict):
-            if len(x['actions']) != 1:
-                raise TensorForceError('DDPG critic network must have only one action input, but {} given.'.format(
-                    len(x['actions'])))
-            x_actions = x['actions'][next(iter(sorted(x['actions'])))]
-        else:
-            x_actions = x['actions']
-
-        x_actions = tf.reshape(tf.cast(x_actions, dtype=tf.float32), (-1, 1))
-
-        out = self.t0l.apply(x=x_states, update=update)
-        out = self.t0b.apply(x=out, update=update)
-        out = self.t0n.apply(x=out, update=update)
-
-        out = self.t1l.apply(x=tf.concat([out, x_actions], axis=-1), update=update)
-        out = self.t1b.apply(x=out, update=update)
-        out = self.t1n.apply(x=out, update=update)
-
-        out = self.t2d.apply(x=out, update=update)
-
-        # Remove last dimension because we only return Q values for one state and action
-        out = tf.squeeze(out)
-
-        if return_internals:
-            # Todo: Internals management
-            return out, None
-        else:
-            return out
 
 
 class DPGTargetModel(DistributionModel):
@@ -138,9 +71,9 @@ class DPGTargetModel(DistributionModel):
         self.target_network = None
         self.target_network_optimizer = None
 
-        self.critic = None
+        self.critic_network = None
         self.critic_optimizer = None
-        self.target_critic = None
+        self.target_critic_network = None
         self.target_critic_optimizer = None
 
         super(DPGTargetModel, self).__init__(
@@ -167,7 +100,7 @@ class DPGTargetModel(DistributionModel):
         )
 
         assert self.memory_spec["include_next_states"]
-        assert self.requires_deterministic == True
+        assert self.requires_deterministic
 
     def setup_components_and_tf_funcs(self, custom_getter=None):
         custom_getter = super(DPGTargetModel, self).setup_components_and_tf_funcs(custom_getter)
@@ -187,17 +120,21 @@ class DPGTargetModel(DistributionModel):
         # Target network distributions
         self.target_distributions = self.create_distributions()
 
-        # Critic
-        size_t0 = self.critic_network_spec['size_t0']
-        size_t1 = self.critic_network_spec['size_t1']
+        # critic
+        self.critic_network = Network.from_spec(
+            spec=self.critic_network_spec,
+            kwargs=dict(scope='critic')
+        )
 
-        self.critic = DDPGCriticNetwork(scope='critic', size_t0=size_t0, size_t1=size_t1)
+        self.target_critic_network = Network.from_spec(
+            spec=self.critic_network_spec,
+            kwargs=dict(scope='target-critic')
+        )
+
         self.critic_optimizer = Optimizer.from_spec(
             spec=self.critic_optimizer_spec,
             kwargs=dict(summary_labels=self.summary_labels)
         )
-
-        self.target_critic = DDPGCriticNetwork(scope='target-critic', size_t0=size_t0, size_t1=size_t1)
 
         # Target critic optimizer
         self.target_critic_optimizer = Synchronization(
@@ -238,11 +175,15 @@ class DPGTargetModel(DistributionModel):
         return actions, internals
 
     def tf_loss_per_instance(self, states, internals, actions, terminal, reward, next_states, next_internals, update, reference=None):
-        q = self.critic.apply(dict(states=states, actions=actions), internals=internals, update=update)
+        states_actions = dict(states)
+        states_actions.update(actions)
+        q = self.critic_network.apply(x=states_actions, internals=internals, update=update)
         return -q
 
     def tf_predict_target_q(self, states, internals, terminal, actions, reward, update):
-        q_value = self.target_critic.apply(dict(states=states, actions=actions), internals=internals, update=update)
+        states_actions = dict(states)
+        states_actions.update(actions)
+        q_value = self.target_critic_network.apply(x=states_actions, internals=internals, update=update)
         return reward + (1. - tf.cast(terminal, dtype=tf.float32)) * self.discount * q_value
 
     def tf_optimization(self, states, internals, actions, terminal, reward, next_states=None, next_internals=None):
@@ -261,7 +202,9 @@ class DPGTargetModel(DistributionModel):
 
         predicted_q = tf.stop_gradient(input=predicted_q)
 
-        real_q = self.critic.apply(dict(states=states, actions=actions), internals=internals, update=update)
+        states_actions = dict(states)
+        states_actions.update(actions)
+        real_q = self.critic_network.apply(x=states_actions, internals=internals, update=update)
 
         # Update critic
         def fn_critic_loss(predicted_q, real_q):
@@ -269,7 +212,7 @@ class DPGTargetModel(DistributionModel):
 
         critic_optimization = self.critic_optimizer.minimize(
             time=self.timestep,
-            variables=self.critic.get_variables(),
+            variables=self.critic_network.get_variables(),
             arguments=dict(
                 predicted_q=predicted_q,
                 real_q=real_q
@@ -310,8 +253,8 @@ class DPGTargetModel(DistributionModel):
 
         target_critic_optimization = self.target_critic_optimizer.minimize(
             time=self.timestep,
-            variables=self.target_critic.get_variables(),
-            source_variables=self.critic.get_variables()
+            variables=self.target_critic_network.get_variables(),
+            source_variables=self.critic_network.get_variables()
         )
 
         return tf.group(critic_optimization, optimization, target_optimization, target_critic_optimization)
@@ -321,7 +264,7 @@ class DPGTargetModel(DistributionModel):
             include_submodules=include_submodules,
             include_nontrainable=include_nontrainable
         )
-        critic_variables = self.critic.get_variables(include_nontrainable=include_nontrainable)
+        critic_variables = self.critic_network.get_variables(include_nontrainable=include_nontrainable)
         model_variables += critic_variables
 
         if include_nontrainable:
@@ -343,7 +286,7 @@ class DPGTargetModel(DistributionModel):
             ]
             model_variables += target_distributions_variables
 
-            target_critic_variables = self.target_critic.get_variables(include_nontrainable=include_nontrainable)
+            target_critic_variables = self.target_critic_network.get_variables(include_nontrainable=include_nontrainable)
             model_variables += target_critic_variables
 
             if include_nontrainable:
@@ -357,7 +300,7 @@ class DPGTargetModel(DistributionModel):
 
     def get_components(self):
         result = dict(super(DPGTargetModel, self).get_components())
-        result[DPGTargetModel.COMPONENT_CRITIC] = self.critic
+        result[DPGTargetModel.COMPONENT_CRITIC] = self.critic_network
         result[DPGTargetModel.COMPONENT_TARGET_NETWORK] = self.target_network
         for name in sorted(self.target_distributions):
             result["%s_%s" % (DPGTargetModel.COMPONENT_TARGET_DISTRIBUTION, name)] = self.target_distributions[name]
