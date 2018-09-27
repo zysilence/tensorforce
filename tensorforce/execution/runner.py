@@ -25,6 +25,7 @@ import warnings
 from inspect import getargspec
 from tqdm import tqdm
 
+
 class Runner(BaseRunner):
     """
     Simple runner for non-realtime single-process execution.
@@ -102,26 +103,23 @@ class Runner(BaseRunner):
         if num_timesteps is not None:
             num_timesteps += self.agent.timestep
 
+        # [sfan] Romove from inside of the episode while loop
         # Update global counters.
-        # [sfan] removed from episode while loop
         self.global_episode = self.agent.episode  # global value (across all agents)
         self.global_timestep = self.agent.timestep  # global value (across all agents)
 
         # add progress bar
-        with tqdm(total=num_episodes) as pbar:
+        with tqdm(total=num_episodes, initial=self.agent.episode) as pbar:
+            # Episode loop
             while True:
                 episode_start_time = time.time()
                 state = self.environment.reset()
                 self.agent.reset()
 
-                # Update global counters.
-                self.global_episode = self.agent.episode  # global value (across all agents)
-                self.global_timestep = self.agent.timestep  # global value (across all agents)
-
                 episode_reward = 0
                 self.current_timestep = 0
 
-                # time step (within episode) loop
+                # Time-step(within episode) loop
                 while True:
                     action = self.agent.act(states=state, deterministic=deterministic)
 
@@ -186,11 +184,7 @@ class Runner(BaseRunner):
                         (num_timesteps is not None and self.global_timestep >= num_timesteps) or \
                         self.agent.should_stop():
                     break
-                # [sfan] Test is over
-                if testing and state is None:
-                    break
-            if num_episodes and self.global_episode:
-                pbar.update(num_episodes - self.global_episode)
+            pbar.update(num_episodes - self.global_episode)
 
     # keep backwards compatibility
     @property

@@ -1558,7 +1558,7 @@ class Model(object):
         #     raise TensorForceError("Invalid model directory/file.")
 
         self.saver.restore(sess=self.session, save_path=file)
-        self.session.run(self.buffer_index_reset_op)
+        self.session.run(self.buffer_index_reset_op, {self.episode_index: 0})
 
     def get_components(self):
         """
