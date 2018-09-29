@@ -185,6 +185,8 @@ def main():
                             format(max(r.episode_profits[-500:])))
                 logger.info("Min profits of last 500 episodes: {}".
                             format(min(r.episode_profits[-500:])))
+                logger.info("Stop loss number of last 500 episodes: {}".
+                            format(sum(r.episode_stop_loss[-500:])))
                 logger.info('-'*25)
                 hist, bin_edges = np.histogram(r.episode_profits[-500:])
                 logger.info("Hist and bin-edges of last 500 profits:")
@@ -197,6 +199,8 @@ def main():
                             format(max(r.episode_profits[-100:])))
                 logger.info("Min profits of last 100 episodes: {}".
                             format(min(r.episode_profits[-100:])))
+                logger.info("Stop loss number of last 100 episodes: {}".
+                            format(sum(r.episode_stop_loss[-100:])))
                 logger.info('-'*25)
                 hist, bin_edges = np.histogram(r.episode_profits[-100:])
                 logger.info("Hist and bin-edges of last 100 profits:")

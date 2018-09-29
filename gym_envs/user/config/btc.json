@@ -27,6 +27,10 @@
   "EPISODE": {
     "max_len": 200,
     "stop_loss_fraction": 0.95,
-    "force_stop_loss": true
+    "force_stop_loss": true,
+    "trade_once": true
+  },
+  "REWARD": {
+    "extra_reward": 0
   }
 }

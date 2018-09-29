@@ -47,6 +47,7 @@ class Runner(BaseRunner):
         self.episode_profits = None  # list of accumulated episode profits
         self.episode_action_holds = None  # list of accumulated actions for 'hold'
         self.episode_action_empties = None  # list of accumulated actions for 'empty'
+        self.episode_stop_loss = None  # list of episode stop loss flags
         self.reset(history)
 
     def close(self):
@@ -66,6 +67,7 @@ class Runner(BaseRunner):
         self.episode_profits = history.get("episode_profits", list())
         self.episode_action_holds = history.get("episode_action_holds", list())
         self.episode_action_empties = history.get("episode_action_empties", list())
+        self.episode_stop_loss = history.get("episode_stop_loss", list())
 
     # TODO: make average reward another possible criteria for runner-termination
     def run(self, num_timesteps=None, num_episodes=None, max_episode_timesteps=None, deterministic=False,
@@ -164,9 +166,11 @@ class Runner(BaseRunner):
                     profit = env_stats.get('profit')
                     hold = env_stats.get('action').get('1')
                     empty = env_stats.get('action').get('0')
+                    stop_loss = env_stats.get('stop_loss')
                     self.episode_profits.append(profit)
                     self.episode_action_holds.append(hold)
                     self.episode_action_empties.append(empty)
+                    self.episode_stop_loss.append(stop_loss)
 
                 self.global_episode += 1
                 pbar.update(1)

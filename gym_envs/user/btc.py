@@ -89,6 +89,7 @@ class BitcoinEnv(gym.Env):
         self.logger.setLevel(logging.INFO)
 
         self.is_stop_loss = False
+        self.terminal = False
 
     @property
     def states(self): return self.states_
@@ -110,6 +111,7 @@ class BitcoinEnv(gym.Env):
 
     def reset(self):
         self.is_stop_loss = False
+        self.terminal = False
         acc = self.acc[self.mode]
         acc.step.i = 0
         acc.step.cash, acc.step.value = self.start_cash, self.start_value
@@ -132,12 +134,11 @@ class BitcoinEnv(gym.Env):
     def step(self, action):
         """
         Episode terminating(e.g., terminal=True) conditions:
-            1. Finish one trading, e.g., bug once and sell once
+            1. Finish one trading, e.g., bug once and sell once(according to config)
             2. Reach the stop-loss line
             3. Reach the maximum episode length
             4. When testing, all testing data has been consumed
         """
-        terminal = False
         acc = self.acc[self.mode]
         totals = acc.step.totals
         acc.step.signals.append(float(action))
@@ -175,7 +176,8 @@ class BitcoinEnv(gym.Env):
             acc.step.value = 0
             # [sfan] Episode terminating condition 1:
             #   Trade once per episode. When shorting the trade, the episode is terminated.
-            terminal = True
+            if self.hypers.EPISODE.trade_once:
+                self.terminal = True
 
         # next delta. [1,2,2].pct_change() == [NaN, 1, 0]
         # pct_change = self.prices_diff[acc.step.i + 1]
@@ -202,24 +204,23 @@ class BitcoinEnv(gym.Env):
 
         # [sfan] Episode terminating condition 4:
         if next_state is None:
-            terminal = True
+            self.terminal = True
 
         # [sfan] Episode terminating condition 2:
         # If reaching the stop loss level, the episode is terminated.
-        is_stoploss = False
         if total_now < self.stop_loss:
             """
             print("**************************")
             print("Profit is {}".format(totals.trade[-1] * 1.0 / self.start_cash - 1))
             print("Profit of last time-step is {}".format(totals.trade[-2] * 1.0 / self.start_cash -1))
             """
-            terminal = True
+            self.terminal = True
             self.is_stop_loss = True
 
         # [sfan] Episode terminating condition 3:
         max_episode_len = self.hypers.EPISODE.max_len
         if acc.step.i >= max_episode_len:
-            terminal = True
+            self.terminal = True
 
         """
         if terminal and self.mode in ('train', 'test'):
@@ -227,13 +228,13 @@ class BitcoinEnv(gym.Env):
             acc.step.signals.append(0)  # Add one last signal (to match length)
         """
 
-        if terminal and self.mode in ('live', 'test_live'):
+        if self.terminal and self.mode in ('live', 'test_live'):
             raise NotImplementedError
 
-        reward = self.get_return(terminal)
+        reward = self.get_return()
 
         # if acc.step.value <= 0 or acc.step.cash <= 0: terminal = 1
-        return next_state, reward, terminal, {}
+        return next_state, reward, self.terminal, {}
 
     def render(self, mode='human'):
         return None
@@ -260,11 +261,11 @@ class BitcoinEnv(gym.Env):
         else:
             return None
 
-    def get_return(self, terminal=False):
+    def get_return(self):
         acc = self.acc[self.mode]
         totals = acc.step.totals
         # action = acc.step.signals[-1]
-        if terminal:
+        if self.terminal:
             if totals.trade:
                 reward = (totals.trade[-1] / totals.trade[0]) - 1
 
@@ -276,9 +277,12 @@ class BitcoinEnv(gym.Env):
                     reward = (totals.hold[-1] / (self.start_cash + self.start_value) - 1) * (-1)
                 """
             if self.is_stop_loss and self.hypers.EPISODE.force_stop_loss:
-                reward = -0.05
+                reward = self.hypers.EPISODE.stop_loss_fraction - 1
         else:
-            reward = 0
+            if self.hypers.EPISODE.trade_once:
+                reward = self.hypers.REWARD.extra_reward
+            else:
+                0
         """
         if terminal:
             reward = -100
@@ -307,6 +311,7 @@ class BitcoinEnv(gym.Env):
         
         stats = {
             "profit": profit,
+            "stop_loss": self.is_stop_loss,
             "episode_len": acc.step.i,
             "action": {
                 "0": eq_0,
