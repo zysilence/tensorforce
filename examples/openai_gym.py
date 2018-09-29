@@ -29,6 +29,7 @@ import os
 import time
 import sys
 
+import numpy as np
 from tensorforce import TensorForceError
 from tensorforce.agents import Agent
 from tensorforce.execution import Runner
@@ -179,8 +180,25 @@ def main():
                             format(sum(r.episode_profits) / len(r.episode_profits)))
                 logger.info("Average of last 500 profits: {}".
                             format(sum(r.episode_profits[-500:]) / min(500, len(r.episode_profits))))
+                logger.info("Max of last 500 profits: {}".
+                            format(max(r.episode_profits[-500:])))
+                logger.info("Min of last 500 profits: {}".
+                            format(min(r.episode_profits[-500:])))
+                hist, bin_edges = np.histogram(r.episode_profits[-500:])
+                logger.info("Hist and bin-edges of last 500 profits:")
+                logger.info(hist)
+                logger.info(bin_edges)
+                logger.info('-'*50)
                 logger.info("Average of last 100 profits: {}".
                             format(sum(r.episode_profits[-100:]) / min(100, len(r.episode_profits))))
+                logger.info("Max of last 100 profits: {}".
+                            format(max(r.episode_profits[-100:])))
+                logger.info("Min of last 100 profits: {}".
+                            format(min(r.episode_profits[-100:])))
+                hist, bin_edges = np.histogram(r.episode_profits[-100:])
+                logger.info("Hist and bin-edges of last 100 profits:")
+                logger.info(hist)
+                logger.info(bin_edges)
 
             # [sfan] Holds
             if r.episode_action_holds:
