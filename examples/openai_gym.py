@@ -178,23 +178,26 @@ def main():
                 logger.info("Episode profit: {}".format(r.episode_profits[-1]))
                 logger.info("Average profits: {}".
                             format(sum(r.episode_profits) / len(r.episode_profits)))
-                logger.info("Average of last 500 profits: {}".
+                logger.info('-'*50)
+                logger.info("Average profits of last 500 episodes: {}".
                             format(sum(r.episode_profits[-500:]) / min(500, len(r.episode_profits))))
-                logger.info("Max of last 500 profits: {}".
+                logger.info("Max profits of last 500 episodes: {}".
                             format(max(r.episode_profits[-500:])))
-                logger.info("Min of last 500 profits: {}".
+                logger.info("Min profits of last 500 episodes: {}".
                             format(min(r.episode_profits[-500:])))
+                logger.info('-'*25)
                 hist, bin_edges = np.histogram(r.episode_profits[-500:])
                 logger.info("Hist and bin-edges of last 500 profits:")
                 logger.info(hist)
                 logger.info(bin_edges)
                 logger.info('-'*50)
-                logger.info("Average of last 100 profits: {}".
+                logger.info("Average profits of last 100 episodes: {}".
                             format(sum(r.episode_profits[-100:]) / min(100, len(r.episode_profits))))
-                logger.info("Max of last 100 profits: {}".
+                logger.info("Max profits of last 100 episodes: {}".
                             format(max(r.episode_profits[-100:])))
-                logger.info("Min of last 100 profits: {}".
+                logger.info("Min profits of last 100 episodes: {}".
                             format(min(r.episode_profits[-100:])))
+                logger.info('-'*25)
                 hist, bin_edges = np.histogram(r.episode_profits[-100:])
                 logger.info("Hist and bin-edges of last 100 profits:")
                 logger.info(hist)
