@@ -28,9 +28,10 @@
     "max_len": 200,
     "stop_loss_fraction": 0.95,
     "force_stop_loss": true,
-    "trade_once": true
+    "trade_once": false
   },
   "REWARD": {
-    "extra_reward": 0
+    "extra_reward": 0,
+    "fee_rate": 0.0026
   }
 }

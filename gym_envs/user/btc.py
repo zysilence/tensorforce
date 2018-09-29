@@ -90,6 +90,7 @@ class BitcoinEnv(gym.Env):
 
         self.is_stop_loss = False
         self.terminal = False
+        self.fee = 0
 
     @property
     def states(self): return self.states_
@@ -112,6 +113,7 @@ class BitcoinEnv(gym.Env):
     def reset(self):
         self.is_stop_loss = False
         self.terminal = False
+        self.fee = 0
         acc = self.acc[self.mode]
         acc.step.i = 0
         acc.step.cash, acc.step.value = self.start_cash, self.start_value
@@ -153,14 +155,11 @@ class BitcoinEnv(gym.Env):
             Exchange.KRAKEN: 0.0026  # https://www.kraken.com/en-us/help/fees
         }[EXCHANGE]
         """
-        fee = {
-            Exchange.GDAX: 0,  # https://support.gdax.com/customer/en/portal/articles/2425097-what-are-the-fees-on-gdax-
-            Exchange.KRAKEN: 0  # https://www.kraken.com/en-us/help/fees
-        }[EXCHANGE]
 
         # [sfan]
+        fee_rate = self.hypers.REWARD.fee_rate
         hold_btc = self.hypers.ACTION.pct_map[str(1)] * self.start_cash
-        hold_before = hold_btc - hold_btc * fee
+        hold_before = hold_btc - hold_btc * fee_rate
         if acc.step.value == 0:
             cash_before = acc.step.cash - hold_btc
         else:
@@ -169,10 +168,12 @@ class BitcoinEnv(gym.Env):
         # Perform the trade. In training mode, we'll let it dip into negative here, but then kill and punish below.
         # In testing/live, we'll just block the trade if they can't afford it
         if act_pct > 0 and acc.step.value == 0 and acc.step.cash >= self.stop_loss:
-            acc.step.value += act_btc - act_btc * fee
+            # acc.step.value += act_btc - act_btc * fee_rate
+            acc.step.value += act_btc
             acc.step.cash -= act_btc
         if act_pct == 0 and acc.step.value > 0:
-            acc.step.cash += acc.step.value - acc.step.value * fee
+            self.fee = acc.step.value * fee_rate
+            acc.step.cash += acc.step.value - self.fee
             acc.step.value = 0
             # [sfan] Episode terminating condition 1:
             #   Trade once per episode. When shorting the trade, the episode is terminated.
@@ -264,7 +265,8 @@ class BitcoinEnv(gym.Env):
     def get_return(self):
         acc = self.acc[self.mode]
         totals = acc.step.totals
-        # action = acc.step.signals[-1]
+        action = acc.step.signals[-1]
+        reward = 0
         if self.terminal:
             if totals.trade:
                 reward = (totals.trade[-1] / totals.trade[0]) - 1
@@ -278,6 +280,9 @@ class BitcoinEnv(gym.Env):
                 """
             if self.is_stop_loss and self.hypers.EPISODE.force_stop_loss:
                 reward = self.hypers.EPISODE.stop_loss_fraction - 1
+            # Trading fee
+            if not action:
+                reward -= self.fee
         else:
             if self.hypers.EPISODE.trade_once:
                 reward = self.hypers.REWARD.extra_reward
