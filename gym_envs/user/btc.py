@@ -39,7 +39,7 @@ class BitcoinEnv(gym.Env):
         # cash/val start @ about $3.5k each. You should increase/decrease depending on how much you'll put into your
         # exchange accounts to trade with. Presumably the agent will learn to work with what you've got (cash/value
         # are state inputs); but starting capital does effect the learning process.
-        self.start_cash, self.start_value = 1, 0  # .4, .4
+        self.start_cash, self.start_value = 1.0, .0  # .4, .4
 
         # [sfan] default: 'train'; can be set by 'set_mode' method
         self.mode = 'train'
@@ -62,7 +62,8 @@ class BitcoinEnv(gym.Env):
         # self.update_btc_price()
 
         # [sfan] stop loss value
-        self.stop_loss = self.start_cash * 0.8
+        stop_loss_fraction = self.hypers.EPISODE.stop_loss_fraction
+        self.stop_loss = self.start_cash * stop_loss_fraction
 
         # Action space
         # see {last_good_commit_ for action_types other than 'single_discrete'
@@ -190,18 +191,31 @@ class BitcoinEnv(gym.Env):
             terminal = False
         else:
             terminal = True
-        reward = self.get_return()
 
+        is_stoploss = False
         # If reaching the stop loss level, the episode is terminated.
         if total_now < self.stop_loss:
+            """
+            print("**************************")
+            print("Profit is {}".format(totals.trade[-1] * 1.0 / self.start_cash - 1))
+            print("Profit of last time-step is {}".format(totals.trade[-2] * 1.0 / self.start_cash -1))
+            """
+            terminal = True
+            is_stoploss = True
+        max_episode_len = self.hypers.EPISODE.max_len
+        if acc.step.i >= max_episode_len:
             terminal = True
 
+        """
         if terminal and self.mode in ('train', 'test'):
             # We're done.
             acc.step.signals.append(0)  # Add one last signal (to match length)
+        """
 
         if terminal and self.mode in ('live', 'test_live'):
             raise NotImplementedError
+
+        reward = self.get_return(terminal, is_stoploss)
 
         # if acc.step.value <= 0 or acc.step.cash <= 0: terminal = 1
         return next_state, reward, terminal, {}
@@ -231,21 +245,29 @@ class BitcoinEnv(gym.Env):
         else:
             return None
 
-    def get_return(self):
+    def get_return(self, terminal=False, is_stoploss=False):
         acc = self.acc[self.mode]
         totals = acc.step.totals
-        action = acc.step.signals[-1]
-        if action:
-            if len(totals.trade) > 1:
-                reward = (totals.trade[-1] / totals.trade[-2]) - 1
-            else:
-                reward = totals.trade[-1] / (self.start_cash + self.start_value) - 1
+        # action = acc.step.signals[-1]
+        if terminal:
+            if totals.trade:
+                reward = (totals.trade[-1] / totals.trade[0]) - 1
+
+                """
+                # [sfan] if action is empty position(=0), the reward is calculated over holding
+                if len(totals.trade) > 1:
+                    reward = (totals.hold[-1] / totals.trade[-2] - 1) * (-1)
+                else:
+                    reward = (totals.hold[-1] / (self.start_cash + self.start_value) - 1) * (-1)
+                """
+            if is_stoploss:
+                reward = -10
         else:
-            # [sfan] if action is empty position(=0), the reward is calculated over holding
-            if len(totals.trade) > 1:
-                reward = (totals.hold[-1] / totals.trade[-2] - 1) * (-1)
-            else:
-                reward = (totals.hold[-1] / (self.start_cash + self.start_value) - 1) * (-1)
+            reward = 0
+        """
+        if terminal:
+            reward = -100
+        """
 
         # [sfan] scaling or not?
         # reward = reward * 1e4
