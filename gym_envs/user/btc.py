@@ -282,7 +282,7 @@ class BitcoinEnv(gym.Env):
             if self.hypers.EPISODE.trade_once:
                 reward = self.hypers.REWARD.extra_reward
             else:
-                0
+                reward = 0
         """
         if terminal:
             reward = -100
