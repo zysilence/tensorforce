@@ -266,35 +266,42 @@ class BitcoinEnv(gym.Env):
         acc = self.acc[self.mode]
         totals = acc.step.totals
         action = acc.step.signals[-1]
-        reward = 0
+
+        if self.hypers.EPISODE.force_stop_loss and self.is_stop_loss:
+            reward = self.hypers.EPISODE.stop_loss_fraction - 1
+        else:
+            reward = (totals.trade[-1] / totals.trade[0]) - 1
+
+        if self.hypers.EPISODE.trade_once:
+            reward += self.hypers.REWARD.extra_reward
+
+        reward -= self.fee
+
+        """
         if self.terminal:
-            if totals.trade:
+            if self.hypers.EPISODE.force_stop_loss and self.is_stop_loss:
+                reward = self.hypers.EPISODE.stop_loss_fraction - 1
+            else:
                 reward = (totals.trade[-1] / totals.trade[0]) - 1
 
-                """
-                # [sfan] if action is empty position(=0), the reward is calculated over holding
-                if len(totals.trade) > 1:
-                    reward = (totals.hold[-1] / totals.trade[-2] - 1) * (-1)
-                else:
-                    reward = (totals.hold[-1] / (self.start_cash + self.start_value) - 1) * (-1)
-                """
-            if self.is_stop_loss and self.hypers.EPISODE.force_stop_loss:
-                reward = self.hypers.EPISODE.stop_loss_fraction - 1
-            # Trading fee
-            if not action:
-                reward -= self.fee
         else:
             if self.hypers.EPISODE.trade_once:
-                reward = self.hypers.REWARD.extra_reward
+                reward += self.hypers.REWARD.extra_reward
+                # Encourage Explore
+                if len(totals.trade) > 1:
+                    reward += (totals.trade[-1] / totals.trade[-2] - 1) * action
+                else:
+                    reward += (totals.trade[-1] / (self.start_cash + self.start_value) - 1) * action
             else:
                 reward = 0
         """
-        if terminal:
-            reward = -100
         """
-
-        # [sfan] scaling or not?
-        # reward = reward * 1e4
+        # [sfan] if action is empty position(=0), the reward is calculated over holding
+        if len(totals.trade) > 1:
+            reward = (totals.hold[-1] / totals.trade[-2] - 1) * (-1)
+        else:
+            reward = (totals.hold[-1] / (self.start_cash + self.start_value) - 1) * (-1)
+        """
 
         return reward
     
