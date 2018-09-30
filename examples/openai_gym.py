@@ -178,6 +178,7 @@ def main():
                 logger.info("Episode profit: {}".format(r.episode_profits[-1]))
                 logger.info("Average profits: {}".
                             format(sum(r.episode_profits) / len(r.episode_profits)))
+
                 logger.info('-'*50)
                 logger.info("Average profits of last 500 episodes: {}".
                             format(sum(r.episode_profits[-500:]) / min(500, len(r.episode_profits))))
@@ -192,6 +193,7 @@ def main():
                 logger.info("Hist and bin-edges of last 500 profits:")
                 logger.info(hist)
                 logger.info(bin_edges)
+
                 logger.info('-'*50)
                 logger.info("Average profits of last 100 episodes: {}".
                             format(sum(r.episode_profits[-100:]) / min(100, len(r.episode_profits))))
@@ -207,6 +209,36 @@ def main():
                 logger.info(hist)
                 logger.info(bin_edges)
 
+                logger.info('-'*50)
+                logger.info("Average profits of last 20 episodes: {}".
+                            format(sum(r.episode_profits[-20:]) / min(20, len(r.episode_profits))))
+                logger.info("Max profits of last 20 episodes: {}".
+                            format(max(r.episode_profits[-20:])))
+                logger.info("Min profits of last 20 episodes: {}".
+                            format(min(r.episode_profits[-20:])))
+                logger.info("Stop loss number of last 20 episodes: {}".
+                            format(sum(r.episode_stop_loss[-20:])))
+                logger.info('-'*25)
+                hist, bin_edges = np.histogram(r.episode_profits[-20:])
+                logger.info("Hist and bin-edges of last 20 profits:")
+                logger.info(hist)
+                logger.info(bin_edges)
+
+                logger.info('-'*50)
+                logger.info("Average profits of last 10 episodes: {}".
+                            format(sum(r.episode_profits[-10:]) / min(10, len(r.episode_profits))))
+                logger.info("Max profits of last 10 episodes: {}".
+                            format(max(r.episode_profits[-10:])))
+                logger.info("Min profits of last 10 episodes: {}".
+                            format(min(r.episode_profits[-10:])))
+                logger.info("Stop loss number of last 10 episodes: {}".
+                            format(sum(r.episode_stop_loss[-10:])))
+                logger.info('-'*25)
+                hist, bin_edges = np.histogram(r.episode_profits[-10:])
+                logger.info("Hist and bin-edges of last 10 profits:")
+                logger.info(hist)
+                logger.info(bin_edges)
+
             # [sfan] Holds
             if r.episode_action_holds:
                 logger.info('-'*50)
@@ -217,6 +249,10 @@ def main():
                             format(sum(r.episode_action_holds[-500:]) / min(500, len(r.episode_action_holds))))
                 logger.info("Average of last 100 action-'hold' cnt: {:0.4f}".
                             format(sum(r.episode_action_holds[-100:]) / min(100, len(r.episode_action_holds))))
+                logger.info("Average of last 20 action-'hold' cnt: {:0.4f}".
+                            format(sum(r.episode_action_holds[-20:]) / min(20, len(r.episode_action_holds))))
+                logger.info("Average of last 10 action-'hold' cnt: {:0.4f}".
+                            format(sum(r.episode_action_holds[-10:]) / min(10, len(r.episode_action_holds))))
             # [sfan] Empties
             if r.episode_action_empties:
                 logger.info('-'*50)
@@ -227,6 +263,10 @@ def main():
                             format(sum(r.episode_action_empties[-500:]) / min(500, len(r.episode_action_empties))))
                 logger.info("Average of last 100 action-'empty' cnt: {:0.4f}".
                             format(sum(r.episode_action_empties[-100:]) / min(100, len(r.episode_action_empties))))
+                logger.info("Average of last 20 action-'empty' cnt: {:0.4f}".
+                            format(sum(r.episode_action_empties[-20:]) / min(20, len(r.episode_action_empties))))
+                logger.info("Average of last 10 action-'empty' cnt: {:0.4f}".
+                            format(sum(r.episode_action_empties[-10:]) / min(10, len(r.episode_action_empties))))
 
         if args.save and args.save_episodes is not None and not r.episode % args.save_episodes:
             logger.info("Saving agent to {}".format(args.save))
