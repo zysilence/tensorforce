@@ -55,6 +55,8 @@ class BitcoinEnv(gym.Env):
             step=dict(),  # setup in reset()
         )
         self.acc = Box(train=copy.deepcopy(acc), test=copy.deepcopy(acc))
+        self.acc.train.step.hold_value = self.start_value + self.start_cash
+        self.acc.test.step.hold_value = self.start_value + self.start_cash
         self.data = Data(window=self.hypers.STATE.step_window, indicators={}, mode=self.mode)
 
         # gdax min order size = .01btc; kraken = .002btc
@@ -115,8 +117,14 @@ class BitcoinEnv(gym.Env):
         self.terminal = False
         self.fee = 0
         acc = self.acc[self.mode]
+        if self.mode == 'test':
+            if hasattr(acc.step, "i"):
+                last_step = acc.step.i
+            else:
+                last_step = 0
         acc.step.i = 0
         acc.step.cash, acc.step.value = self.start_cash, self.start_value
+        # acc.step.hold_value = self.start_value + self.start_cash
         acc.step.totals = Box(
             trade=[self.start_cash + self.start_value],
             hold=[self.start_cash + self.start_value]
@@ -125,9 +133,10 @@ class BitcoinEnv(gym.Env):
         if self.mode == 'test':
             # [sfan] TODO: read testset start index and end index from config
             acc.ep.i += 1
+            acc.ep.i += last_step
         elif self.mode == 'train':
             # [sfan] randomly chose episode start point
-            acc.ep.i = self.np_random.randint(low=0, high=self.data.df.shape[0] - self.hypers.STATE.step_window)
+            acc.ep.i = self.np_random.randint(low=0, high=self.data.df.shape[0] - self.hypers.STATE.step_window - 1)
 
         # self.data.reset_cash_val()
         # self.data.set_cash_val(acc.ep.i, acc.step.i, 0., 0.)
@@ -146,6 +155,7 @@ class BitcoinEnv(gym.Env):
         acc.step.signals.append(float(action))
 
         act_pct = self.hypers.ACTION.pct_map[str(action)]
+        fee_rate = self.hypers.REWARD.fee_rate
         # act_btc = act_pct * (acc.step.cash if act_pct > 0 else acc.step.value)
         act_btc = act_pct * self.start_cash
 
@@ -155,15 +165,6 @@ class BitcoinEnv(gym.Env):
             Exchange.KRAKEN: 0.0026  # https://www.kraken.com/en-us/help/fees
         }[EXCHANGE]
         """
-
-        # [sfan]
-        fee_rate = self.hypers.REWARD.fee_rate
-        hold_btc = self.hypers.ACTION.pct_map[str(1)] * self.start_cash
-        hold_before = hold_btc - hold_btc * fee_rate
-        if acc.step.value == 0:
-            cash_before = acc.step.cash - hold_btc
-        else:
-            cash_before = acc.step.cash
 
         # Perform the trade. In training mode, we'll let it dip into negative here, but then kill and punish below.
         # In testing/live, we'll just block the trade if they can't afford it
@@ -185,12 +186,15 @@ class BitcoinEnv(gym.Env):
         _, y = self.data.get_data(acc.ep.i, acc.step.i)  # TODO verify
         pct_change = y[self.data.target]
 
+        # [sfan]
+        hold_before = totals.trade[-1]
+        acc.step.hold_value = pct_change * hold_before
+        # calculate what the reward would be "if I held", to calculate the actual reward's _advantage_ over holding
+        totals.hold.append(acc.step.hold_value)
+
         acc.step.value = pct_change * acc.step.value
         total_now = acc.step.value + acc.step.cash
         totals.trade.append(total_now)
-
-        # calculate what the reward would be "if I held", to calculate the actual reward's _advantage_ over holding
-        totals.hold.append(cash_before + pct_change * hold_before)
 
         acc.step.i += 1
 
@@ -205,6 +209,7 @@ class BitcoinEnv(gym.Env):
 
         # [sfan] Episode terminating condition 4:
         if next_state is None:
+            print("%%%%%%%%%%%%%%%%%%")
             self.terminal = True
 
         # [sfan] Episode terminating condition 2:
@@ -220,7 +225,7 @@ class BitcoinEnv(gym.Env):
 
         # [sfan] Episode terminating condition 3:
         max_episode_len = self.hypers.EPISODE.max_len
-        if acc.step.i >= max_episode_len:
+        if self.mode == 'train' and acc.step.i >= max_episode_len:
             self.terminal = True
 
         """
@@ -278,6 +283,20 @@ class BitcoinEnv(gym.Env):
         reward -= self.fee
 
         """
+        if self.hypers.EPISODE.force_stop_loss and self.is_stop_loss:
+            reward = self.hypers.EPISODE.stop_loss_fraction - 1
+        else:
+            if action:
+                reward = (totals.trade[-1] / totals.trade[-2]) - 1
+            else:
+                reward = (totals.hold[-1] / totals.trade[-2] - 1) * (-1)
+                reward -= self.fee
+
+        if self.hypers.EPISODE.trade_once:
+            reward += self.hypers.REWARD.extra_reward
+        """
+
+        """
         if self.terminal:
             if self.hypers.EPISODE.force_stop_loss and self.is_stop_loss:
                 reward = self.hypers.EPISODE.stop_loss_fraction - 1
@@ -320,7 +339,7 @@ class BitcoinEnv(gym.Env):
 
         eq_0 = (signals == 0).sum()
         gt_0 = (signals > 0).sum()
-        
+
         stats = {
             "profit": profit,
             "stop_loss": self.is_stop_loss,
