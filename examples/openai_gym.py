@@ -170,6 +170,10 @@ def main():
                         format(sum(r.episode_rewards[-500:]) / min(500, len(r.episode_rewards))))
             logger.info("Average of last 100 rewards: {}".
                         format(sum(r.episode_rewards[-100:]) / min(100, len(r.episode_rewards))))
+            logger.info("Average of last 20 rewards: {}".
+                        format(sum(r.episode_rewards[-20:]) / min(20, len(r.episode_rewards))))
+            logger.info("Average of last 10 rewards: {}".
+                        format(sum(r.episode_rewards[-10:]) / min(10, len(r.episode_rewards))))
 
             # [sfan] Logging episode stats from the user defined environment
             # [sfan] Profits
@@ -239,33 +243,38 @@ def main():
                 logger.info(hist)
                 logger.info(bin_edges)
 
+                if args.test:
+                    logger.info('-'*50)
+                    logger.info("Sum profits of test: {}".
+                            format(sum(r.episode_profits)))
+
             # [sfan] Holds
             if r.episode_action_holds:
                 logger.info('-'*50)
                 logger.info("Episode action-'hold' cnt: {}".format(r.episode_action_holds[-1]))
-                logger.info("Average action-'hold' cnt: {:0.4f}".
+                logger.info("Average action-'hold' cnt: {}".
                             format(sum(r.episode_action_holds) / len(r.episode_action_holds)))
-                logger.info("Average of last 500 action-'hold' cnt: {:0.4f}".
+                logger.info("Average of last 500 action-'hold' cnt: {}".
                             format(sum(r.episode_action_holds[-500:]) / min(500, len(r.episode_action_holds))))
-                logger.info("Average of last 100 action-'hold' cnt: {:0.4f}".
+                logger.info("Average of last 100 action-'hold' cnt: {}".
                             format(sum(r.episode_action_holds[-100:]) / min(100, len(r.episode_action_holds))))
-                logger.info("Average of last 20 action-'hold' cnt: {:0.4f}".
+                logger.info("Average of last 20 action-'hold' cnt: {}".
                             format(sum(r.episode_action_holds[-20:]) / min(20, len(r.episode_action_holds))))
-                logger.info("Average of last 10 action-'hold' cnt: {:0.4f}".
+                logger.info("Average of last 10 action-'hold' cnt: {}".
                             format(sum(r.episode_action_holds[-10:]) / min(10, len(r.episode_action_holds))))
             # [sfan] Empties
             if r.episode_action_empties:
                 logger.info('-'*50)
                 logger.info("Episode action-'empty' cnt: {}".format(r.episode_action_empties[-1]))
-                logger.info("Average action-'empty' cnt: {:0.4f}".
+                logger.info("Average action-'empty' cnt: {}".
                             format(sum(r.episode_action_empties) / len(r.episode_action_empties)))
-                logger.info("Average of last 500 action-'empty' cnt: {:0.4f}".
+                logger.info("Average of last 500 action-'empty' cnt: {}".
                             format(sum(r.episode_action_empties[-500:]) / min(500, len(r.episode_action_empties))))
-                logger.info("Average of last 100 action-'empty' cnt: {:0.4f}".
+                logger.info("Average of last 100 action-'empty' cnt: {}".
                             format(sum(r.episode_action_empties[-100:]) / min(100, len(r.episode_action_empties))))
-                logger.info("Average of last 20 action-'empty' cnt: {:0.4f}".
+                logger.info("Average of last 20 action-'empty' cnt: {}".
                             format(sum(r.episode_action_empties[-20:]) / min(20, len(r.episode_action_empties))))
-                logger.info("Average of last 10 action-'empty' cnt: {:0.4f}".
+                logger.info("Average of last 10 action-'empty' cnt: {}".
                             format(sum(r.episode_action_empties[-10:]) / min(10, len(r.episode_action_empties))))
 
         if args.save and args.save_episodes is not None and not r.episode % args.save_episodes:
