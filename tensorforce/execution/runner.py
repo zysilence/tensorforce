@@ -116,6 +116,8 @@ class Runner(BaseRunner):
             while True:
                 episode_start_time = time.time()
                 state = self.environment.reset()
+                if testing and state is None:
+                    break
                 self.agent.reset()
 
                 episode_reward = 0
